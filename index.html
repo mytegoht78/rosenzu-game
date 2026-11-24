@@ -1,0 +1,1334 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="robots" content="noindex, nofollow">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>東京路線図ゲーム</title>
+<style>
+  :root {
+    --bg: #f6f3ec; --panel: #ffffff; --ink: #222; --sub: #6b6b6b; --line: #ddd7c8;
+    --accent: #2f7d32; --ok: #2f7d32; --ng: #c0392b; --warn: #b9770e;
+    --map-bg: #fbf9f3; --grid: #eee9dc; --halo: #fbf9f3;
+    --water: #cfe6f3; --river: #b9d9ec; --park: #dcebd0; --bgtext: #9bb7c8;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #17181a; --panel: #222427; --ink: #eee; --sub: #9a9a9a; --line: #3a3d41;
+      --accent: #7fd37f; --ok: #7fd37f; --ng: #ff8a7a; --warn: #f0b860;
+      --map-bg: #1d1f22; --grid: #26292d; --halo: #1d1f22;
+      --water: #1d3345; --river: #25465d; --park: #26382a; --bgtext: #4d6c82;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body { background: var(--bg); color: var(--ink); display: flex; flex-direction: column;
+    font-family: "Hiragino Sans", "Yu Gothic UI", "Meiryo", system-ui, sans-serif; }
+  header { padding: 10px 16px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+    border-bottom: 1px solid var(--line); background: var(--panel); }
+  header h1 { font-size: 18px; margin: 0; }
+  header h1 small { font-size: 12px; color: var(--sub); font-weight: 400; margin-left: 6px; }
+  form { display: flex; gap: 8px; flex: 1; min-width: 240px; max-width: 420px; }
+  input[type=text] { flex: 1; font-size: 18px; padding: 8px 12px; border-radius: 8px; min-width: 0;
+    border: 2px solid var(--line); background: var(--bg); color: var(--ink); }
+  input[type=text]:focus { outline: none; border-color: var(--accent); }
+  button, select { font: inherit; font-size: 14px; padding: 7px 12px; border-radius: 8px; cursor: pointer;
+    border: 1px solid var(--line); background: var(--panel); color: var(--ink); }
+  button.primary { background: var(--accent); color: #fff; border-color: var(--accent); font-weight: 600; }
+  button:hover { filter: brightness(0.96); }
+  #message { min-height: 22px; font-size: 14px; flex-basis: 100%; }
+  #message.ok { color: var(--ok); } #message.ng { color: var(--ng); } #message.warn { color: var(--warn); }
+
+  main { flex: 1; min-height: 0; display: flex; }
+  #mapWrap { flex: 1; min-width: 0; position: relative; background: var(--map-bg); overflow: hidden; }
+  svg#map { width: 100%; height: 100%; display: block; touch-action: none; cursor: grab; }
+  svg#map.dragging { cursor: grabbing; }
+  #mapTools { position: absolute; right: 10px; bottom: 10px; display: flex; gap: 6px; }
+  #mapTools button { padding: 6px 10px; }
+
+  #legend { position: absolute; left: 10px; top: 10px; background: color-mix(in srgb, var(--panel) 92%, transparent);
+    border: 1px solid var(--line); border-radius: 10px; padding: 6px 10px; font-size: 12.5px; max-width: 200px; }
+  #legend .lh { font-weight: 600; cursor: pointer; display: flex; justify-content: space-between; gap: 8px; user-select: none; }
+  #legend { max-height: calc(100% - 70px); overflow-y: auto; }
+  #legend.collapsed .items, #legend.collapsed .lt { display: none; }
+  #legend .lt { display: flex; gap: 14px; padding-top: 4px; margin-top: 4px; border-top: 1px solid var(--line); }
+  #legend .lt a { color: var(--accent); cursor: pointer; font-weight: 600; user-select: none; }
+  .lineTools { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--sub); font-weight: 600; margin-bottom: -6px; }
+  .lineTools span { margin-right: auto; }
+  .lineTools button { padding: 3px 9px; font-size: 12.5px; }
+  /* 路線図ビューア（全部入り）：ゲームの操作はすべて隠す */
+  body.viewonly .inputRow, body.viewonly #scoreBox, body.viewonly #historyWrap { display: none; }
+  #legend .item { display: flex; align-items: center; gap: 7px; padding: 2px 0; cursor: pointer; user-select: none; }
+  #legend .item.off { opacity: .35; text-decoration: line-through; }
+  #legend .item.empty .nm { color: var(--sub); }
+  #legend .sw { width: 22px; height: 6px; border-radius: 3px; flex: none; }
+
+  aside { width: 310px; background: var(--panel); border-left: 1px solid var(--line);
+    padding: 14px; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; }
+  #total { font-size: 15px; font-weight: 600; display: flex; justify-content: space-between; }
+  #total span:last-child { font-variant-numeric: tabular-nums; }
+  #cards { display: flex; flex-direction: column; gap: 6px; }
+  .lineCard { border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; }
+  .lineCard label { display: flex; align-items: center; gap: 7px; font-size: 13.5px; cursor: pointer; }
+  .lineCard .badge { width: 12px; height: 12px; border-radius: 50%; flex: none; }
+  .lineCard .cnt { margin-left: auto; font-variant-numeric: tabular-nums; color: var(--sub); }
+  .lineCard.done .cnt { color: var(--ok); font-weight: 700; }
+  .bar { height: 5px; background: var(--line); border-radius: 3px; margin-top: 5px; overflow: hidden; }
+  .bar > i { display: block; height: 100%; width: 0; transition: width .4s; }
+  aside h2 { font-size: 13px; color: var(--sub); margin: 0 0 6px; font-weight: 600; }
+  #history { display: flex; flex-wrap: wrap; gap: 5px; }
+  .chip { font-size: 13px; padding: 2px 8px; border-radius: 12px; background: var(--bg); border: 1px solid var(--line); }
+  .inputRow { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; flex: 1 1 100%; min-width: 0; }
+  .gameBtns { display: flex; gap: 6px; flex-wrap: wrap; }
+  .gameBtns button:disabled { opacity: .5; cursor: default; }
+  .gameBtns button.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+  #scoreBox { margin-left: auto; text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  #scoreBox .lbl { font-size: 12px; color: var(--sub); }
+  #scoreBox b { font-size: 24px; }
+  #scoreBox .max { font-size: 13px; color: var(--sub); }
+  #scoreNote { font-size: 11.5px; color: var(--warn); min-height: 14px; }
+  .stg.hint .stDot { fill: var(--halo); stroke: #999; stroke-dasharray: 3 3; }
+  .stg.hint .stLabel { fill: var(--sub); font-weight: 700; }
+
+  #toast { white-space: pre-line; position: absolute; left: 50%; top: 16px; transform: translateX(-50%) scale(.9);
+    background: var(--accent); color: #fff; padding: 12px 22px; border-radius: 12px; font-size: 18px; font-weight: 700;
+    opacity: 0; pointer-events: none; transition: all .35s; text-align: center; }
+  #toast.show { opacity: 1; transform: translateX(-50%) scale(1); }
+
+  .seg { stroke-linecap: round; fill: none; }
+  .seg.new { animation: fadein .6s ease-out; }
+  .stg.new { animation: pop .45s cubic-bezier(.2,1.6,.4,1); transform-box: fill-box; transform-origin: center; }
+  .stLabel { font-weight: 700; fill: var(--ink); paint-order: stroke; stroke: var(--halo); stroke-linejoin: round; }
+  .stg.missed .stDot { fill: var(--halo); stroke: #999; stroke-dasharray: 3 3; }
+  .stg.missed .stLabel { fill: var(--sub); font-weight: 400; }
+  .bgLabel { fill: var(--bgtext); font-size: 26px; letter-spacing: 4px; }
+  @keyframes pop { from { transform: scale(0); } to { transform: scale(1); } }
+  @keyframes fadein { from { opacity: 0; } to { opacity: 1; } }
+
+  /* --- メインメニュー --- */
+  #menu { position: fixed; inset: 0; z-index: 10; background: var(--bg); overflow-y: auto;
+    display: flex; flex-direction: column; align-items: center; padding: 40px 16px; gap: 28px; }
+  #menu h1 { font-size: 30px; margin: 0; text-align: center; }
+  #menu .lead { color: var(--sub); margin: 8px 0 0; text-align: center; }
+  #menu .modes { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; width: 100%; max-width: 940px; }
+  .modeCard { background: var(--panel); border: 2px solid var(--line); border-radius: 16px; padding: 20px;
+    text-align: left; cursor: pointer; display: flex; flex-direction: column; gap: 10px; color: var(--ink); font-size: 15px; }
+  .modeCard:hover { border-color: var(--accent); filter: none; transform: translateY(-2px); }
+  .modeCard h2 { margin: 0; font-size: 21px; }
+  .modeCard p { margin: 0; color: var(--sub); font-size: 13.5px; line-height: 1.6; }
+  .modeCard .stripes { display: flex; gap: 4px; flex-wrap: wrap; }
+  .modeCard .stripes i { display: block; width: 28px; height: 7px; border-radius: 4px; }
+  .modeCard .prog { font-variant-numeric: tabular-nums; font-size: 13.5px; display: flex; justify-content: space-between; }
+  .modeCard .bar { margin-top: 0; }
+  .modeCard .sc { font-size: 13px; color: var(--sub); display: flex; gap: 14px; flex-wrap: wrap; }
+  .modeCard .sc b { color: var(--ink); }
+  .modeCard .tag { font-size: 12px; color: var(--accent); font-weight: 700; }
+  .modeCard.complete { border-color: var(--ok); }
+  #backBtn { padding: 6px 10px; }
+
+  @media (max-width: 760px) {
+    main { flex-direction: column; }
+    aside { width: 100%; border-left: none; border-top: 1px solid var(--line); max-height: 42%; }
+    #legend { display: none; }
+  }
+</style>
+</head>
+<body>
+<div id="menu">
+  <div><h1>🚃 東京路線図ゲーム</h1><p class="lead" id="menuLead"></p></div>
+  <div class="modes" id="modeList"></div>
+  <button id="menuBackBtn" hidden>← 路線の選択に戻る</button>
+</div>
+<header>
+  <button id="backBtn" title="メインメニューに戻る">☰ メニュー</button>
+  <h1>🚃 東京路線図ゲーム<small id="modeName"></small></h1>
+  <div id="scoreBox" title="ヒントを使うと、その後に入力した駅の得点が下がります"><span class="lbl">スコア</span> <b id="scoreVal">0</b><span class="max"> / 100</span><div id="scoreNote"></div></div>
+  <div class="inputRow">
+    <form id="form" autocomplete="off">
+      <input type="text" id="input" placeholder="駅名を入力（例：しんじゅく / 新宿）" autofocus>
+      <button class="primary" type="submit">追加</button>
+    </form>
+    <div class="gameBtns">
+      <button id="hintBtn">💡 ヒント</button>
+      <button id="giveUpBtn">🏳 ギブアップ</button>
+      <button id="resetBtn">↺ リセット</button>
+    </div>
+  </div>
+  <div id="message"></div>
+</header>
+<main>
+  <div id="mapWrap">
+    <svg id="map" xmlns="http://www.w3.org/2000/svg"></svg>
+    <div id="legend"><div class="lh"><span>凡例（クリックで表示切替）</span><span class="arrow">▾</span></div><div class="items"></div><div class="lt"><a id="lgAll">全選択</a><a id="lgNone">全解除</a></div></div>
+    <div id="mapTools"><button id="zoomIn">＋</button><button id="zoomOut">－</button><button id="fitFound">駅に合わせる</button><button id="fitAll">全域</button></div>
+    <div id="toast"></div>
+  </div>
+  <aside>
+    <div id="total"><span>入力した駅</span><span></span></div>
+    <div class="lineTools"><span>路線の表示</span><button id="selAll">すべて選択</button><button id="selNone">すべて解除</button></div>
+    <div id="cards"></div>
+    <div id="historyWrap">
+      <h2>入力した駅（新しい順）</h2>
+      <div id="history"></div>
+    </div>
+  </aside>
+</main>
+
+<script>
+// ============================================================
+// データ（モード単位で持つ。メトロ編を作るときは別の STATIONS/LINES を用意する）
+//  駅: [id, 駅名, 読み, 緯度, 経度, ラベル希望位置(r/l/t/b|""), 別名[]]
+// ============================================================
+const RAW = [
+  // --- 山手線 ---
+  ["tokyo","東京","とうきょう",35.6812,139.7671,"r"],
+  ["kanda","神田","かんだ",35.6918,139.7709,"r"],
+  ["akihabara","秋葉原","あきはばら",35.6984,139.7731,"r"],
+  ["okachimachi","御徒町","おかちまち",35.7075,139.7747,"r"],
+  ["ueno","上野","うえの",35.7138,139.7773,"r"],
+  ["uguisudani","鶯谷","うぐいすだに",35.7206,139.7782,"r",["鴬谷"]],
+  ["nippori","日暮里","にっぽり",35.7281,139.7710,"r"],
+  ["nishinippori","西日暮里","にしにっぽり",35.7321,139.7669,"l"],
+  ["tabata","田端","たばた",35.7381,139.7608,"r"],
+  ["komagome","駒込","こまごめ",35.7365,139.7469,"t"],
+  ["sugamo","巣鴨","すがも",35.7335,139.7393,"b"],
+  ["otsuka","大塚","おおつか",35.7313,139.7282,"t"],
+  ["ikebukuro","池袋","いけぶくろ",35.7295,139.7109,"t"],
+  ["mejiro","目白","めじろ",35.7210,139.7066,"l"],
+  ["takadanobaba","高田馬場","たかだのばば",35.7127,139.7038,"l"],
+  ["shinokubo","新大久保","しんおおくぼ",35.7010,139.7002,"l"],
+  ["shinjuku","新宿","しんじゅく",35.6896,139.7006,"l"],
+  ["yoyogi","代々木","よよぎ",35.6833,139.7020,"l"],
+  ["harajuku","原宿","はらじゅく",35.6702,139.7027,"l"],
+  ["shibuya","渋谷","しぶや",35.6580,139.7016,"l"],
+  ["ebisu","恵比寿","えびす",35.6467,139.7101,"l"],
+  ["meguro","目黒","めぐろ",35.6340,139.7158,"l"],
+  ["gotanda","五反田","ごたんだ",35.6258,139.7236,"l"],
+  ["osaki","大崎","おおさき",35.6197,139.7286,"l"],
+  ["shinagawa","品川","しながわ",35.6285,139.7388,"b"],
+  ["takanawagw","高輪ゲートウェイ","たかなわげーとうぇい",35.6355,139.7407,"r",["たかなわげいとうぇい","たかなわげいとうえい","たかなわげーとうえい","高輪ゲイトウェイ","高輪gw"]],
+  ["tamachi","田町","たまち",35.6457,139.7476,"r"],
+  ["hamamatsucho","浜松町","はままつちょう",35.6555,139.7571,"r"],
+  ["shimbashi","新橋","しんばし",35.6663,139.7583,"r"],
+  ["yurakucho","有楽町","ゆうらくちょう",35.6750,139.7633,"r"],
+  // --- 京浜東北線 ---
+  ["akabane","赤羽","あかばね",35.7776,139.7210],
+  ["higashijujo","東十条","ひがしじゅうじょう",35.7641,139.7283],
+  ["oji","王子","おうじ",35.7528,139.7381],
+  ["kaminakazato","上中里","かみなかざと",35.7450,139.7447],
+  ["oimachi","大井町","おおいまち",35.6064,139.7347],
+  ["omori","大森","おおもり",35.5890,139.7279],
+  ["kamata","蒲田","かまた",35.5625,139.7163],
+  // --- 中央線・中央総武線 ---
+  ["ochanomizu","御茶ノ水","おちゃのみず",35.6996,139.7653,"",["お茶の水","お茶ノ水","御茶の水"]],
+  ["yotsuya","四ツ谷","よつや",35.6861,139.7300,"",["四谷","四ッ谷"]],
+  ["nakano","中野","なかの",35.7058,139.6659],
+  ["koenji","高円寺","こうえんじ",35.7053,139.6497],
+  ["asagaya","阿佐ケ谷","あさがや",35.7047,139.6358,"",["阿佐ヶ谷","阿佐谷"]],
+  ["ogikubo","荻窪","おぎくぼ",35.7048,139.6199],
+  ["nishiogikubo","西荻窪","にしおぎくぼ",35.7040,139.5994,"",["西荻"]],
+  ["ichigaya","市ケ谷","いちがや",35.6911,139.7358,"",["市ヶ谷","市谷"]],
+  ["iidabashi","飯田橋","いいだばし",35.7020,139.7448],
+  ["suidobashi","水道橋","すいどうばし",35.7023,139.7533],
+  ["higashinakano","東中野","ひがしなかの",35.7070,139.6838],
+  ["okubo","大久保","おおくぼ",35.7009,139.6973],
+  ["sendagaya","千駄ケ谷","せんだがや",35.6811,139.7113,"",["千駄ヶ谷","千駄谷"]],
+  ["shinanomachi","信濃町","しなのまち",35.6802,139.7202],
+  ["asakusabashi","浅草橋","あさくさばし",35.6975,139.7861],
+  ["ryogoku","両国","りょうごく",35.6969,139.7926],
+  ["kinshicho","錦糸町","きんしちょう",35.6969,139.8145],
+  ["kameido","亀戸","かめいど",35.6970,139.8265],
+  ["hirai","平井","ひらい",35.7035,139.8432],
+  ["shinkoiwa","新小岩","しんこいわ",35.7170,139.8574],
+  ["koiwa","小岩","こいわ",35.7336,139.8820],
+  // --- 総武快速線 ---
+  ["shinnihonbashi","新日本橋","しんにほんばし",35.6877,139.7742,"",["しんにっぽんばし"]],
+  ["bakurocho","馬喰町","ばくろちょう",35.6918,139.7827],
+  // --- 埼京線 ---
+  ["itabashi","板橋","いたばし",35.7458,139.7192],
+  ["jujo","十条","じゅうじょう",35.7627,139.7209],
+  ["kitaakabane","北赤羽","きたあかばね",35.7867,139.7200],
+  ["ukimafunado","浮間舟渡","うきまふなど",35.7946,139.7112],
+  // --- 常磐線 ---
+  ["mikawashima","三河島","みかわしま",35.7330,139.7796],
+  ["minamisenju","南千住","みなみせんじゅ",35.7325,139.7986],
+  ["kitasenju","北千住","きたせんじゅ",35.7497,139.8050],
+  ["ayase","綾瀬","あやせ",35.7621,139.8250],
+  ["kameari","亀有","かめあり",35.7667,139.8473],
+  ["kanamachi","金町","かなまち",35.7699,139.8706],
+  // --- 東北本線 ---
+  ["oku","尾久","おく",35.7462,139.7582],
+  // --- 京葉線 ---
+  ["hatchobori","八丁堀","はっちょうぼり",35.6747,139.7772],
+  ["etchujima","越中島","えっちゅうじま",35.6677,139.7916],
+  ["shiomi","潮見","しおみ",35.6630,139.8109],
+  ["shinkiba","新木場","しんきば",35.6460,139.8264],
+  ["kasairinkai","葛西臨海公園","かさいりんかいこうえん",35.6401,139.8606],
+  // --- 横須賀線 ---
+  ["nishioi","西大井","にしおおい",35.6040,139.7216],
+  // ===== 地下鉄（東京メトロ・都営）ここから =====
+  // --- 銀座線 ---
+  ["omotesando","表参道","おもてさんどう",35.6654,139.7123],
+  ["gaienmae","外苑前","がいえんまえ",35.6706,139.7175],
+  ["aoyamaitchome","青山一丁目","あおやまいっちょうめ",35.6727,139.7241,"",["青山1丁目"]],
+  ["akasakamitsuke","赤坂見附","あかさかみつけ",35.6770,139.7370],
+  ["tameikesanno","溜池山王","ためいけさんのう",35.6735,139.7413],
+  ["toranomon","虎ノ門","とらのもん",35.6701,139.7500,"",["虎の門"]],
+  ["ginza","銀座","ぎんざ",35.6717,139.7640],
+  ["kyobashi","京橋","きょうばし",35.6768,139.7703],
+  ["nihombashi","日本橋","にほんばし",35.6820,139.7737],
+  ["mitsukoshimae","三越前","みつこしまえ",35.6870,139.7735],
+  ["suehirocho","末広町","すえひろちょう",35.7021,139.7713],
+  ["uenohirokoji","上野広小路","うえのひろこうじ",35.7078,139.7727],
+  ["inaricho","稲荷町","いなりちょう",35.7113,139.7830],
+  ["tawaramachi","田原町","たわらまち",35.7102,139.7915],
+  ["asakusa","浅草","あさくさ",35.7107,139.7980],
+  // --- 丸ノ内線 ---
+  ["minamiasagaya","南阿佐ケ谷","みなみあさがや",35.6990,139.6366,"",["南阿佐ヶ谷"]],
+  ["shinkoenji","新高円寺","しんこうえんじ",35.6977,139.6492],
+  ["higashikoenji","東高円寺","ひがしこうえんじ",35.6977,139.6613],
+  ["shinnakano","新中野","しんなかの",35.6968,139.6685],
+  ["nakanosakaue","中野坂上","なかのさかうえ",35.6970,139.6820],
+  ["nishishinjuku","西新宿","にししんじゅく",35.6942,139.6926],
+  ["shinjukusanchome","新宿三丁目","しんじゅくさんちょうめ",35.6906,139.7046,"",["新宿3丁目"]],
+  ["shinjukugyoemmae","新宿御苑前","しんじゅくぎょえんまえ",35.6880,139.7106],
+  ["yotsuyasanchome","四谷三丁目","よつやさんちょうめ",35.6877,139.7194,"",["四谷3丁目"]],
+  ["kokkaigijidomae","国会議事堂前","こっかいぎじどうまえ",35.6745,139.7450],
+  ["kasumigaseki","霞ケ関","かすみがせき",35.6735,139.7508,"",["霞ヶ関"]],
+  ["otemachi","大手町","おおてまち",35.6867,139.7668],
+  ["awajicho","淡路町","あわじちょう",35.6953,139.7672],
+  ["hongosanchome","本郷三丁目","ほんごうさんちょうめ",35.7064,139.7596,"",["本郷3丁目"]],
+  ["korakuen","後楽園","こうらくえん",35.7079,139.7516],
+  ["myogadani","茗荷谷","みょうがだに",35.7171,139.7370],
+  ["shinotsuka","新大塚","しんおおつか",35.7260,139.7298],
+  ["nakanoshimbashi","中野新橋","なかのしんばし",35.6944,139.6750],
+  ["nakanofujimicho","中野富士見町","なかのふじみちょう",35.6882,139.6666],
+  ["honancho","方南町","ほうなんちょう",35.6815,139.6577],
+  // --- 日比谷線 ---
+  ["minowa","三ノ輪","みのわ",35.7293,139.7916],
+  ["iriya","入谷","いりや",35.7205,139.7851],
+  ["nakaokachimachi","仲御徒町","なかおかちまち",35.7068,139.7772],
+  ["kodemmacho","小伝馬町","こでんまちょう",35.6890,139.7790],
+  ["ningyocho","人形町","にんぎょうちょう",35.6862,139.7826],
+  ["kayabacho","茅場町","かやばちょう",35.6796,139.7798],
+  ["tsukiji","築地","つきじ",35.6674,139.7712],
+  ["higashiginza","東銀座","ひがしぎんざ",35.6693,139.7676],
+  ["hibiya","日比谷","ひびや",35.6741,139.7599],
+  ["kamiyacho","神谷町","かみやちょう",35.6628,139.7455],
+  ["roppongi","六本木","ろっぽんぎ",35.6638,139.7313],
+  ["hiroo","広尾","ひろお",35.6517,139.7222],
+  ["nakameguro","中目黒","なかめぐろ",35.6440,139.6988],
+  // --- 東西線 ---
+  ["ochiai","落合","おちあい",35.7110,139.6872],
+  ["waseda","早稲田","わせだ",35.7057,139.7217],
+  ["kagurazaka","神楽坂","かぐらざか",35.7015,139.7390],
+  ["kudanshita","九段下","くだんした",35.6955,139.7513],
+  ["takebashi","竹橋","たけばし",35.6907,139.7575],
+  ["monzennakacho","門前仲町","もんぜんなかちょう",35.6719,139.7962],
+  ["kiba","木場","きば",35.6690,139.8060],
+  ["toyocho","東陽町","とうようちょう",35.6698,139.8171],
+  ["minamisunamachi","南砂町","みなみすなまち",35.6688,139.8311],
+  ["nishikasai","西葛西","にしかさい",35.6644,139.8590],
+  ["kasai","葛西","かさい",35.6634,139.8727],
+  // --- 千代田線 ---
+  ["yoyogiuehara","代々木上原","よよぎうえはら",35.6692,139.6795],
+  ["yoyogikoen","代々木公園","よよぎこうえん",35.6695,139.6904],
+  ["meijijingumae","明治神宮前","めいじじんぐうまえ",35.6683,139.7050,"",["明治神宮前〈原宿〉"]],
+  ["nogizaka","乃木坂","のぎざか",35.6663,139.7260],
+  ["akasaka","赤坂","あかさか",35.6724,139.7366],
+  ["nijubashimae","二重橋前","にじゅうばしまえ",35.6802,139.7616],
+  ["shinochanomizu","新御茶ノ水","しんおちゃのみず",35.6968,139.7646,"",["新お茶の水","新御茶の水"]],
+  ["yushima","湯島","ゆしま",35.7077,139.7700],
+  ["nezu","根津","ねづ",35.7164,139.7660],
+  ["sendagi","千駄木","せんだぎ",35.7255,139.7628],
+  ["machiya","町屋","まちや",35.7428,139.7808],
+  ["kitaayase","北綾瀬","きたあやせ",35.7716,139.8290],
+  // --- 有楽町線・副都心線 ---
+  ["chikatetsunarimasu","地下鉄成増","ちかてつなります",35.7765,139.6335],
+  ["chikatetsuakatsuka","地下鉄赤塚","ちかてつあかつか",35.7715,139.6431],
+  ["heiwadai","平和台","へいわだい",35.7587,139.6573],
+  ["hikawadai","氷川台","ひかわだい",35.7493,139.6664],
+  ["kotakemukaihara","小竹向原","こたけむかいはら",35.7433,139.6776],
+  ["senkawa","千川","せんかわ",35.7358,139.6985],
+  ["kanamecho","要町","かなめちょう",35.7329,139.7059],
+  ["higashiikebukuro","東池袋","ひがしいけぶくろ",35.7287,139.7190],
+  ["gokokuji","護国寺","ごこくじ",35.7180,139.7283],
+  ["edogawabashi","江戸川橋","えどがわばし",35.7088,139.7345],
+  ["kojimachi","麹町","こうじまち",35.6837,139.7388],
+  ["nagatacho","永田町","ながたちょう",35.6787,139.7402],
+  ["sakuradamon","桜田門","さくらだもん",35.6764,139.7522],
+  ["ginzaitchome","銀座一丁目","ぎんざいっちょうめ",35.6744,139.7685,"",["銀座1丁目"]],
+  ["shintomicho","新富町","しんとみちょう",35.6737,139.7742],
+  ["tsukishima","月島","つきしま",35.6648,139.7839],
+  ["toyosu","豊洲","とよす",35.6552,139.7958],
+  ["tatsumi","辰巳","たつみ",35.6452,139.8120],
+  ["zoshigaya","雑司が谷","ぞうしがや",35.7193,139.7150,"",["雑司ヶ谷"]],
+  ["nishiwaseda","西早稲田","にしわせだ",35.7058,139.7084],
+  ["higashishinjuku","東新宿","ひがししんじゅく",35.6983,139.7074],
+  ["kitasando","北参道","きたさんどう",35.6783,139.7052],
+  // --- 半蔵門線・南北線 ---
+  ["hanzomon","半蔵門","はんぞうもん",35.6858,139.7420],
+  ["jimbocho","神保町","じんぼうちょう",35.6959,139.7577],
+  ["suitengumae","水天宮前","すいてんぐうまえ",35.6827,139.7857],
+  ["kiyosumishirakawa","清澄白河","きよすみしらかわ",35.6818,139.7996],
+  ["sumiyoshi","住吉","すみよし",35.6894,139.8165],
+  ["oshiage","押上","おしあげ",35.7106,139.8130,"",["押上〈スカイツリー前〉","押上スカイツリー前"]],
+  ["shirokanedai","白金台","しろかねだい",35.6374,139.7268],
+  ["shirokanetakanawa","白金高輪","しろかねたかなわ",35.6433,139.7346],
+  ["azabujuban","麻布十番","あざぶじゅうばん",35.6554,139.7366],
+  ["roppongiitchome","六本木一丁目","ろっぽんぎいっちょうめ",35.6664,139.7390,"",["六本木1丁目"]],
+  ["todaimae","東大前","とうだいまえ",35.7243,139.7587],
+  ["honkomagome","本駒込","ほんこまごめ",35.7265,139.7518],
+  ["nishigahara","西ケ原","にしがはら",35.7370,139.7408,"",["西ヶ原"]],
+  ["ojikamiya","王子神谷","おうじかみや",35.7617,139.7330],
+  ["shimo","志茂","しも",35.7685,139.7287],
+  ["akabaneiwabuchi","赤羽岩淵","あかばねいわぶち",35.7786,139.7258],
+  // --- 都営浅草線 ---
+  ["nishimagome","西馬込","にしまごめ",35.5890,139.7025],
+  ["magome","馬込","まごめ",35.5980,139.7080],
+  ["nakanobu","中延","なかのぶ",35.6050,139.7125],
+  ["togoshi","戸越","とごし",35.6160,139.7190],
+  ["takanawadai","高輪台","たかなわだい",35.6360,139.7340],
+  ["sengakuji","泉岳寺","せんがくじ",35.6389,139.7398],
+  ["mita","三田","みた",35.6486,139.7456],
+  ["daimon","大門","だいもん",35.6566,139.7552],
+  ["takaracho","宝町","たからちょう",35.6759,139.7740],
+  ["higashinihombashi","東日本橋","ひがしにほんばし",35.6903,139.7867],
+  ["kuramae","蔵前","くらまえ",35.7040,139.7909],
+  ["honjoazumabashi","本所吾妻橋","ほんじょあずまばし",35.7100,139.8040],
+  // --- 都営三田線 ---
+  ["shibakoen","芝公園","しばこうえん",35.6538,139.7488],
+  ["onarimon","御成門","おなりもん",35.6570,139.7508],
+  ["uchisaiwaicho","内幸町","うちさいわいちょう",35.6697,139.7557],
+  ["kasuga","春日","かすが",35.7090,139.7530],
+  ["hakusan","白山","はくさん",35.7212,139.7513],
+  ["sengoku","千石","せんごく",35.7280,139.7455],
+  ["nishisugamo","西巣鴨","にしすがも",35.7370,139.7286],
+  ["shinitabashi","新板橋","しんいたばし",35.7440,139.7215],
+  ["itabashikuyakushomae","板橋区役所前","いたばしくやくしょまえ",35.7490,139.7110],
+  ["itabashihoncho","板橋本町","いたばしほんちょう",35.7529,139.7042],
+  ["motohasunuma","本蓮沼","もとはすぬま",35.7585,139.6948],
+  ["shimurasakaue","志村坂上","しむらさかうえ",35.7647,139.6925],
+  ["shimurasanchome","志村三丁目","しむらさんちょうめ",35.7686,139.6866,"",["志村3丁目"]],
+  ["hasune","蓮根","はすね",35.7782,139.6760],
+  ["nishidai","西台","にしだい",35.7822,139.6701],
+  ["takashimadaira","高島平","たかしまだいら",35.7861,139.6628],
+  ["shintakashimadaira","新高島平","しんたかしまだいら",35.7898,139.6573],
+  ["nishitakashimadaira","西高島平","にしたかしまだいら",35.7942,139.6522],
+  // --- 都営新宿線 ---
+  ["akebonobashi","曙橋","あけぼのばし",35.6930,139.7240],
+  ["ogawamachi","小川町","おがわまち",35.6955,139.7675],
+  ["iwamotocho","岩本町","いわもとちょう",35.6962,139.7770],
+  ["bakuroyokoyama","馬喰横山","ばくろよこやま",35.6935,139.7850],
+  ["hamacho","浜町","はまちょう",35.6873,139.7885],
+  ["morishita","森下","もりした",35.6890,139.7965],
+  ["kikukawa","菊川","きくかわ",35.6865,139.8050],
+  ["nishioshima","西大島","にしおおじま",35.6881,139.8302],
+  ["oshima","大島","おおじま",35.6880,139.8357],
+  ["higashioshima","東大島","ひがしおおじま",35.6841,139.8460],
+  ["funabori","船堀","ふなぼり",35.6831,139.8644],
+  ["ichinoe","一之江","いちのえ",35.6822,139.8814],
+  ["mizue","瑞江","みずえ",35.6852,139.8964],
+  ["shinozaki","篠崎","しのざき",35.6920,139.9040],
+  // --- 都営大江戸線 ---
+  ["tochomae","都庁前","とちょうまえ",35.6899,139.6917],
+  ["shinjukunishiguchi","新宿西口","しんじゅくにしぐち",35.6930,139.6978],
+  ["wakamatsukawada","若松河田","わかまつかわだ",35.6985,139.7186],
+  ["ushigomeyanagicho","牛込柳町","うしごめやなぎちょう",35.6985,139.7250],
+  ["ushigomekagurazaka","牛込神楽坂","うしごめかぐらざか",35.7008,139.7335],
+  ["uenookachimachi","上野御徒町","うえのおかちまち",35.7064,139.7742],
+  ["shinokachimachi","新御徒町","しんおかちまち",35.7077,139.7820],
+  ["kachidoki","勝どき","かちどき",35.6595,139.7771],
+  ["tsukijishijo","築地市場","つきじしじょう",35.6643,139.7706],
+  ["shiodome","汐留","しおどめ",35.6639,139.7604],
+  ["akabanebashi","赤羽橋","あかばねばし",35.6554,139.7446],
+  ["kokuritsukyogijo","国立競技場","こくりつきょうぎじょう",35.6803,139.7156],
+  ["nishishinjukugochome","西新宿五丁目","にししんじゅくごちょうめ",35.6930,139.6860,"",["西新宿5丁目"]],
+  ["nakai","中井","なかい",35.7140,139.6866],
+  ["ochiaiminaminagasaki","落合南長崎","おちあいみなみながさき",35.7231,139.6795],
+  ["shinegota","新江古田","しんえこだ",35.7280,139.6715],
+  ["nerima","練馬","ねりま",35.7375,139.6545],
+  ["toshimaen","豊島園","としまえん",35.7430,139.6490],
+  ["nerimakasugacho","練馬春日町","ねりまかすがちょう",35.7503,139.6382],
+  ["hikarigaoka","光が丘","ひかりがおか",35.7587,139.6285],
+  // ===== 私鉄（大手私鉄・北総）ここから =====
+  // --- 京王線・井の頭線 ---
+  ["hatsudai","初台","はつだい",35.6818,139.6867],
+  ["hatagaya","幡ヶ谷","はたがや",35.6786,139.6758,"",["幡ケ谷","幡谷"]],
+  ["sasazuka","笹塚","ささづか",35.6738,139.6669],
+  ["daitabashi","代田橋","だいたばし",35.6706,139.6580],
+  ["meidaimae","明大前","めいだいまえ",35.6686,139.6504],
+  ["shimotakaido","下高井戸","しもたかいど",35.6636,139.6406],
+  ["sakurajosui","桜上水","さくらじょうすい",35.6632,139.6320],
+  ["kamikitazawa","上北沢","かみきたざわ",35.6627,139.6244],
+  ["hachimanyama","八幡山","はちまんやま",35.6623,139.6153],
+  ["rokakoen","芦花公園","ろかこうえん",35.6620,139.6091],
+  ["chitosekarasuyama","千歳烏山","ちとせからすやま",35.6618,139.5993],
+  ["shinsen","神泉","しんせん",35.6571,139.6945],
+  ["komabatodaimae","駒場東大前","こまばとうだいまえ",35.6590,139.6860],
+  ["ikenoue","池ノ上","いけのうえ",35.6612,139.6785,"",["池之上"]],
+  ["shimokitazawa","下北沢","しもきたざわ",35.6613,139.6669],
+  ["shindaita","新代田","しんだいた",35.6638,139.6618],
+  ["higashimatsubara","東松原","ひがしまつばら",35.6651,139.6555],
+  ["eifukucho","永福町","えいふくちょう",35.6762,139.6410],
+  ["nishieifuku","西永福","にしえいふく",35.6789,139.6353],
+  ["hamadayama","浜田山","はまだやま",35.6836,139.6283],
+  ["takaido","高井戸","たかいど",35.6872,139.6205],
+  ["fujimigaoka","富士見ヶ丘","ふじみがおか",35.6900,139.6130,"",["富士見が丘","富士見ケ丘"]],
+  ["kugayama","久我山","くがやま",35.6930,139.6070],
+  // --- 小田急小田原線 ---
+  ["minamishinjuku","南新宿","みなみしんじゅく",35.6857,139.6987],
+  ["sangubashi","参宮橋","さんぐうばし",35.6828,139.6905],
+  ["yoyogihachiman","代々木八幡","よよぎはちまん",35.6760,139.6875],
+  ["higashikitazawa","東北沢","ひがしきたざわ",35.6665,139.6747],
+  ["setagayadaita","世田谷代田","せたがやだいた",35.6578,139.6620],
+  ["umegaoka","梅ヶ丘","うめがおか",35.6532,139.6570,"",["梅が丘","梅ケ丘"]],
+  ["gotokuji","豪徳寺","ごうとくじ",35.6494,139.6492],
+  ["kyodo","経堂","きょうどう",35.6515,139.6368],
+  ["chitosefunabashi","千歳船橋","ちとせふなばし",35.6512,139.6260],
+  ["soshigayaokura","祖師ヶ谷大蔵","そしがやおおくら",35.6497,139.6122,"",["祖師谷大蔵","祖師ケ谷大蔵"]],
+  ["seijogakuenmae","成城学園前","せいじょうがくえんまえ",35.6414,139.5990],
+  ["kitami","喜多見","きたみ",35.6370,139.5882],
+  // --- 東急（東横・目黒・田園都市・大井町・池上・多摩川・世田谷） ---
+  ["daikanyama","代官山","だいかんやま",35.6481,139.7033],
+  ["yutenji","祐天寺","ゆうてんじ",35.6344,139.6914],
+  ["gakugeidaigaku","学芸大学","がくげいだいがく",35.6289,139.6858],
+  ["toritsudaigaku","都立大学","とりつだいがく",35.6180,139.6770],
+  ["jiyugaoka","自由が丘","じゆうがおか",35.6075,139.6689,"",["自由ヶ丘","自由ケ丘"]],
+  ["denenchofu","田園調布","でんえんちょうふ",35.5965,139.6677],
+  ["tamagawa","多摩川","たまがわ",35.5885,139.6692],
+  ["fudomae","不動前","ふどうまえ",35.6265,139.7110],
+  ["musashikoyama","武蔵小山","むさしこやま",35.6200,139.7042],
+  ["nishikoyama","西小山","にしこやま",35.6155,139.6967],
+  ["senzoku","洗足","せんぞく",35.6118,139.6903],
+  ["okayama","大岡山","おおおかやま",35.6075,139.6854],
+  ["okusawa","奥沢","おくさわ",35.6038,139.6735],
+  ["ikejiriohashi","池尻大橋","いけじりおおはし",35.6509,139.6848],
+  ["sangenjaya","三軒茶屋","さんげんじゃや",35.6436,139.6700,"",["さんげんぢゃや"]],
+  ["komazawadaigaku","駒沢大学","こまざわだいがく",35.6337,139.6624],
+  ["sakurashinmachi","桜新町","さくらしんまち",35.6313,139.6440],
+  ["yoga","用賀","ようが",35.6266,139.6339],
+  ["futakotamagawa","二子玉川","ふたこたまがわ",35.6115,139.6263],
+  ["shimoshimmei","下神明","しもしんめい",35.6080,139.7290],
+  ["togoshikoen","戸越公園","とごしこうえん",35.6095,139.7215],
+  ["ebaramachi","荏原町","えばらまち",35.6073,139.7057],
+  ["hatanodai","旗の台","はたのだい",35.6053,139.7028],
+  ["kitasenzoku","北千束","きたせんぞく",35.6082,139.6925],
+  ["midorigaoka","緑が丘","みどりがおか",35.6075,139.6785,"",["緑ヶ丘"]],
+  ["kuhombutsu","九品仏","くほんぶつ",35.6068,139.6624],
+  ["oyamadai","尾山台","おやまだい",35.6072,139.6531],
+  ["todoroki","等々力","とどろき",35.6073,139.6462],
+  ["kaminoge","上野毛","かみのげ",35.6118,139.6379],
+  ["osakihirokoji","大崎広小路","おおさきひろこうじ",35.6215,139.7262],
+  ["togoshiginza","戸越銀座","とごしぎんざ",35.6155,139.7240],
+  ["ebaranakanobu","荏原中延","えばらなかのぶ",35.6095,139.7160],
+  ["nagahara","長原","ながはら",35.6005,139.6968],
+  ["senzokuike","洗足池","せんぞくいけ",35.5951,139.6920],
+  ["ishikawadai","石川台","いしかわだい",35.5923,139.6867],
+  ["yukigayaotsuka","雪が谷大塚","ゆきがやおおつか",35.5909,139.6811,"",["雪ヶ谷大塚"]],
+  ["ontakesan","御嶽山","おんたけさん",35.5848,139.6881],
+  ["kugahara","久が原","くがはら",35.5798,139.6914,"",["久ヶ原"]],
+  ["chidoricho","千鳥町","ちどりちょう",35.5757,139.6965],
+  ["ikegami","池上","いけがみ",35.5715,139.7026],
+  ["hasunuma","蓮沼","はすぬま",35.5668,139.7119],
+  ["numabe","沼部","ぬまべ",35.5845,139.6745],
+  ["unoki","鵜の木","うのき",35.5812,139.6796,"",["鵜ノ木"]],
+  ["shimomaruko","下丸子","しもまるこ",35.5775,139.6857],
+  ["musashinitta","武蔵新田","むさしにった",35.5714,139.6969],
+  ["yaguchinowatashi","矢口渡","やぐちのわたし",35.5689,139.7034],
+  ["nishitaishido","西太子堂","にしたいしどう",35.6447,139.6664],
+  ["wakabayashi","若林","わかばやし",35.6470,139.6627],
+  ["shoinjinjamae","松陰神社前","しょういんじんじゃまえ",35.6488,139.6573],
+  ["setagaya","世田谷","せたがや",35.6507,139.6535],
+  ["kamimachi","上町","かみまち",35.6515,139.6490],
+  ["miyanosaka","宮の坂","みやのさか",35.6538,139.6458,"",["宮ノ坂"]],
+  ["yamashita","山下","やました",35.6563,139.6440],
+  ["matsubara","松原","まつばら",35.6600,139.6419],
+  // --- 西武（池袋線・新宿線・有楽町線） ---
+  ["shiinamachi","椎名町","しいなまち",35.7274,139.6988],
+  ["higashinagasaki","東長崎","ひがしながさき",35.7277,139.6872],
+  ["ekoda","江古田","えこだ",35.7357,139.6740],
+  ["sakuradai","桜台","さくらだい",35.7380,139.6685],
+  ["nakamurabashi","中村橋","なかむらばし",35.7383,139.6465],
+  ["fujimidai","富士見台","ふじみだい",35.7383,139.6385],
+  ["nerimatakanodai","練馬高野台","ねりまたかのだい",35.7392,139.6283],
+  ["shakujikoen","石神井公園","しゃくじいこうえん",35.7425,139.6076],
+  ["oizumigakuen","大泉学園","おおいずみがくえん",35.7494,139.5864],
+  ["seibushinjuku","西武新宿","せいぶしんじゅく",35.6970,139.7000],
+  ["shimoochiai","下落合","しもおちあい",35.7133,139.6970],
+  ["araiyakushimae","新井薬師前","あらいやくしまえ",35.7158,139.6783],
+  ["numabukuro","沼袋","ぬまぶくろ",35.7160,139.6695],
+  ["nogata","野方","のがた",35.7168,139.6553],
+  ["toritsukasei","都立家政","とりつかせい",35.7165,139.6480],
+  ["saginomiya","鷺ノ宮","さぎのみや",35.7167,139.6393,"",["鷺宮"]],
+  ["shimoigusa","下井草","しもいぐさ",35.7170,139.6310],
+  ["igusa","井荻","いおぎ",35.7168,139.6225],
+  ["kamiigusa","上井草","かみいぐさ",35.7170,139.6130],
+  ["kamishakujii","上石神井","かみしゃくじい",35.7172,139.6000],
+  ["musashiseki","武蔵関","むさしせき",35.7195,139.5870],
+  ["shinsakuradai","新桜台","しんさくらだい",35.7400,139.6665],
+  // --- 東武（東上線・スカイツリーライン・亀戸線・大師線） ---
+  ["kitaikebukuro","北池袋","きたいけぶくろ",35.7345,139.7105],
+  ["shimoitabashi","下板橋","しもいたばし",35.7395,139.7085],
+  ["oyama","大山","おおやま",35.7468,139.7040],
+  ["nakaitabashi","中板橋","なかいたばし",35.7508,139.6928],
+  ["tokiwadai","ときわ台","ときわだい",35.7558,139.6905,"",["常盤台"]],
+  ["kamiitabashi","上板橋","かみいたばし",35.7598,139.6795],
+  ["tobunerima","東武練馬","とうぶねりま",35.7660,139.6640],
+  ["shimoakatsuka","下赤塚","しもあかつか",35.7715,139.6525],
+  ["narimasu","成増","なります",35.7783,139.6325],
+  ["tokyoskytree","とうきょうスカイツリー","とうきょうすかいつりー",35.7099,139.8103,"",["東京スカイツリー"]],
+  ["hikifune","曳舟","ひきふね",35.7182,139.8195],
+  ["higashimukojima","東向島","ひがしむこうじま",35.7252,139.8228],
+  ["kanegafuchi","鐘ヶ淵","かねがふち",35.7312,139.8262,"",["鐘ケ淵"]],
+  ["horikiri","堀切","ほりきり",35.7375,139.8218],
+  ["ushida","牛田","うしだ",35.7435,139.8140],
+  ["kosuge","小菅","こすげ",35.7550,139.8150],
+  ["gotanno","五反野","ごたんの",35.7625,139.8085],
+  ["umejima","梅島","うめじま",35.7692,139.8008],
+  ["nishiarai","西新井","にしあらい",35.7770,139.7915],
+  ["takenotsuka","竹ノ塚","たけのつか",35.7895,139.7900,"",["竹の塚"]],
+  ["daishimae","大師前","だいしまえ",35.7799,139.7863],
+  ["higashiazuma","東あずま","ひがしあずま",35.7140,139.8240,"",["東吾妻"]],
+  ["omurai","小村井","おむらい",35.7105,139.8268],
+  ["kameidosuijin","亀戸水神","かめいどすいじん",35.7050,139.8283],
+  // --- 京成（本線・押上線・金町線）・北総 ---
+  ["keiseiueno","京成上野","けいせいうえの",35.7118,139.7753],
+  ["shinmikawashima","新三河島","しんみかわしま",35.7347,139.7758],
+  ["senjuohashi","千住大橋","せんじゅおおはし",35.7475,139.7950],
+  ["keiseiseki","京成関屋","けいせいせきや",35.7487,139.8088],
+  ["horikirishobuen","堀切菖蒲園","ほりきりしょうぶえん",35.7500,139.8200],
+  ["ohanajaya","お花茶屋","おはなぢゃや",35.7458,139.8348,"",["おはなじゃや","お花茶屋"]],
+  ["aoto","青砥","あおと",35.7436,139.8472],
+  ["keiseitakasago","京成高砂","けいせいたかさご",35.7516,139.8650],
+  ["keiseikoiwa","京成小岩","けいせいこいわ",35.7425,139.8800],
+  ["edogawa","江戸川","えどがわ",35.7388,139.8903],
+  ["keiseihikifune","京成曳舟","けいせいひきふね",35.7172,139.8165],
+  ["yahiro","八広","やひろ",35.7236,139.8285],
+  ["yotsugi","四ツ木","よつぎ",35.7295,139.8360,"",["四つ木"]],
+  ["keiseitateishi","京成立石","けいせいたていし",35.7378,139.8470],
+  ["shibamata","柴又","しばまた",35.7600,139.8762],
+  ["keiseikanamachi","京成金町","けいせいかなまち",35.7698,139.8695],
+  ["shinshibamata","新柴又","しんしばまた",35.7545,139.8855],
+  // --- 京急（本線・空港線） ---
+  ["kitashinagawa","北品川","きたしながわ",35.6202,139.7411],
+  ["shimbaba","新馬場","しんばんば",35.6180,139.7425],
+  ["aomonoyokocho","青物横丁","あおものよこちょう",35.6116,139.7424],
+  ["samezu","鮫洲","さめず",35.6065,139.7436],
+  ["tachiaigawa","立会川","たちあいがわ",35.5990,139.7435],
+  ["omorikaigan","大森海岸","おおもりかいがん",35.5913,139.7375],
+  ["heiwajima","平和島","へいわじま",35.5851,139.7346],
+  ["omorimachi","大森町","おおもりまち",35.5775,139.7343],
+  ["umeyashiki","梅屋敷","うめやしき",35.5693,139.7287],
+  ["keikyukamata","京急蒲田","けいきゅうかまた",35.5613,139.7240],
+  ["zoshiki","雑色","ぞうしき",35.5535,139.7233],
+  ["rokugodote","六郷土手","ろくごうどて",35.5470,139.7236],
+  ["koujiya","糀谷","こうじや",35.5585,139.7323],
+  ["otorii","大鳥居","おおとりい",35.5560,139.7400],
+  ["anamoriinari","穴守稲荷","あなもりいなり",35.5508,139.7494],
+  ["tenkuubashi","天空橋","てんくうばし",35.5493,139.7570],
+  ["hanedat3","羽田空港第3ターミナル","はねだくうこうだいさんたーみなる",35.5469,139.7694,"",["羽田空港国際線ターミナル","国際線ターミナル"]],
+  ["hanedat12","羽田空港第1・第2ターミナル","はねだくうこうだいいちだいにたーみなる",35.5495,139.7845,"",["羽田空港国内線ターミナル","国内線ターミナル"]],
+  // ===== 新交通・モノレール・路面電車 ここから =====
+  // --- ゆりかもめ ---
+  ["takeshiba","竹芝","たけしば",35.6553,139.7634],
+  ["hinode","日の出","ひので",35.6486,139.7616],
+  ["shibaurafuto","芝浦ふ頭","しばうらふとう",35.6430,139.7640],
+  ["odaibakaihinkoen","お台場海浜公園","おだいばかいひんこうえん",35.6288,139.7745],
+  ["daiba","台場","だいば",35.6279,139.7795],
+  ["cruiseterminal","東京国際クルーズターミナル","とうきょうこくさいくるーずたーみなる",35.6230,139.7750,"",["船の科学館"]],
+  ["telecomcenter","テレコムセンター","てれこむせんたー",35.6258,139.7845],
+  ["aomi","青海","あおみ",35.6252,139.7885],
+  ["kokusaitenjijoseimon","国際展示場正門","こくさいてんじじょうせいもん",35.6305,139.7932],
+  ["ariake","有明","ありあけ",35.6375,139.7898],
+  ["ariaketennisnomori","有明テニスの森","ありあけてにすのもり",35.6410,139.7885],
+  ["shijomae","市場前","しじょうまえ",35.6448,139.7855],
+  ["shintoyosu","新豊洲","しんとよす",35.6485,139.7898],
+  // --- りんかい線 ---
+  ["shinagawaseaside","品川シーサイド","しながわしーさいど",35.6087,139.7497],
+  ["tennozuisle","天王洲アイル","てんのうずあいる",35.6226,139.7490],
+  ["tokyoteleport","東京テレポート","とうきょうてれぽーと",35.6265,139.7762],
+  ["kokusaitenjijo","国際展示場","こくさいてんじじょう",35.6322,139.7943],
+  ["shinonome","東雲","しののめ",35.6395,139.8035],
+  // --- 東京モノレール ---
+  ["oikeibajomae","大井競馬場前","おおいけいばじょうまえ",35.5985,139.7511],
+  ["ryutsucenter","流通センター","りゅうつうせんたー",35.5870,139.7467],
+  ["showajima","昭和島","しょうわじま",35.5780,139.7490],
+  ["seibijo","整備場","せいびじょう",35.5535,139.7535],
+  ["shinseibijo","新整備場","しんせいびじょう",35.5530,139.7760],
+  ["hanedat1","羽田空港第1ターミナル","はねだくうこうだいいちたーみなる",35.5493,139.7846],
+  ["hanedat2","羽田空港第2ターミナル","はねだくうこうだいにたーみなる",35.5472,139.7883],
+  // --- 日暮里・舎人ライナー ---
+  ["akatsuchishogakkomae","赤土小学校前","あかつちしょうがっこうまえ",35.7380,139.7675],
+  ["kumanomae","熊野前","くまのまえ",35.7479,139.7763],
+  ["adachiodai","足立小台","あだちおだい",35.7566,139.7734],
+  ["ogiohashi","扇大橋","おうぎおおはし",35.7648,139.7702],
+  ["takano","高野","こうや",35.7704,139.7708],
+  ["kohoku","江北","こうほく",35.7785,139.7750],
+  ["nishiaraidaishinishi","西新井大師西","にしあらいだいしにし",35.7860,139.7740],
+  ["yazaike","谷在家","やざいけ",35.7945,139.7709],
+  ["toneikoen","舎人公園","とねりこうえん",35.8039,139.7691],
+  ["toneri","舎人","とねり",35.8107,139.7692],
+  ["minumadaishinsuikoen","見沼代親水公園","みぬまだいしんすいこうえん",35.8183,139.7740],
+  // --- つくばエクスプレス ---
+  ["aoi","青井","あおい",35.7690,139.8090],
+  ["rokucho","六町","ろくちょう",35.7790,139.8125],
+  // --- 都電荒川線（東京さくらトラム） ---
+  ["minowabashi","三ノ輪橋","みのわばし",35.7287,139.7922],
+  ["arakawaicchumae","荒川一中前","あらかわいっちゅうまえ",35.7312,139.7898],
+  ["arakawakuyakushomae","荒川区役所前","あらかわくやくしょまえ",35.7345,139.7868],
+  ["arakawanichome","荒川二丁目","あらかわにちょうめ",35.7375,139.7845,"",["荒川2丁目"]],
+  ["arakawananachome","荒川七丁目","あらかわななちょうめ",35.7410,139.7830,"",["荒川7丁目"]],
+  ["machiyaekimae","町屋駅前","まちやえきまえ",35.7433,139.7808],
+  ["machiyanichome","町屋二丁目","まちやにちょうめ",35.7456,139.7790,"",["町屋2丁目"]],
+  ["higashiogusanchome","東尾久三丁目","ひがしおぐさんちょうめ",35.7470,139.7788,"",["東尾久3丁目"]],
+  ["miyanomae","宮ノ前","みやのまえ",35.7512,139.7745,"",["宮の前"]],
+  ["odai","小台","おだい",35.7550,139.7712],
+  ["arakawayuenchimae","荒川遊園地前","あらかわゆうえんちまえ",35.7568,139.7680],
+  ["arakawashakomae","荒川車庫前","あらかわしゃこまえ",35.7575,139.7640],
+  ["kajiwara","梶原","かじわら",35.7550,139.7580],
+  ["sakaecho","栄町","さかえちょう",35.7535,139.7525],
+  ["ojiekimae","王子駅前","おうじえきまえ",35.7528,139.7400],
+  ["asukayama","飛鳥山","あすかやま",35.7510,139.7385],
+  ["takinogawaicchome","滝野川一丁目","たきのがわいっちょうめ",35.7480,139.7372,"",["滝野川1丁目"]],
+  ["nishigaharayonchome","西ケ原四丁目","にしがはらよんちょうめ",35.7435,139.7378,"",["西ヶ原四丁目","西ケ原4丁目","西ヶ原4丁目"]],
+  ["shinkoshinzuka","新庚申塚","しんこうしんづか",35.7400,139.7385],
+  ["koshinzuka","庚申塚","こうしんづか",35.7372,139.7352],
+  ["sugamoshinden","巣鴨新田","すがもしんでん",35.7355,139.7320],
+  ["otsukaekimae","大塚駅前","おおつかえきまえ",35.7312,139.7283],
+  ["mukohara","向原","むかいはら",35.7280,139.7237],
+  ["higashiikebukuroyonchome","東池袋四丁目","ひがしいけぶくろよんちょうめ",35.7262,139.7190,"",["東池袋4丁目"]],
+  ["todenzoshigaya","都電雑司ヶ谷","とでんぞうしがや",35.7215,139.7160,"",["都電雑司が谷"]],
+  ["kishibojinmae","鬼子母神前","きしぼじんまえ",35.7183,139.7143],
+  ["gakushuinshita","学習院下","がくしゅういんした",35.7142,139.7132],
+  ["omokagebashi","面影橋","おもかげばし",35.7122,139.7165],
+];
+const ALL_STATIONS = RAW.map(([id,name,kana,lat,lon,pref,alias]) => ({id,name,kana,lat,lon,pref:pref||"",alias:alias||[]}));
+
+const ALL_LINES = [
+  { id:"yamanote", name:"山手線", color:"#80c241", loop:true, stations: ALL_STATIONS.slice(0,30).map(s=>s.id) },
+  { id:"keihin", name:"京浜東北線", color:"#00b2e5", stations:["akabane","higashijujo","oji","kaminakazato","tabata","nishinippori","nippori","uguisudani","ueno","okachimachi","akihabara","kanda","tokyo","yurakucho","shimbashi","hamamatsucho","tamachi","takanawagw","shinagawa","oimachi","omori","kamata"] },
+  { id:"chuo", name:"中央線（快速）", color:"#f15a22", stations:["tokyo","kanda","ochanomizu","yotsuya","shinjuku","nakano","koenji","asagaya","ogikubo","nishiogikubo"] },
+  { id:"sobulocal", name:"中央・総武線（各駅停車）", color:"#ffd400", stations:["nishiogikubo","ogikubo","asagaya","koenji","nakano","higashinakano","okubo","shinjuku","yoyogi","sendagaya","shinanomachi","yotsuya","ichigaya","iidabashi","suidobashi","ochanomizu","akihabara","asakusabashi","ryogoku","kinshicho","kameido","hirai","shinkoiwa","koiwa"] },
+  { id:"soburapid", name:"総武線（快速）", color:"#0068b7", stations:["tokyo","shinnihonbashi","bakurocho","kinshicho","shinkoiwa"] },
+  { id:"yokosuka", name:"横須賀線", color:"#7a5ac8", stations:["tokyo","shimbashi","shinagawa","nishioi"] },
+  { id:"tokaido", name:"東海道線", color:"#8b5a2b", stations:["tokyo","shimbashi","shinagawa"] },
+  { id:"saikyo", name:"埼京線", color:"#00a99d", stations:["osaki","ebisu","shibuya","shinjuku","ikebukuro","itabashi","jujo","akabane","kitaakabane","ukimafunado"] },
+  { id:"joban", name:"常磐線", color:"#0b7a4b", stations:["ueno","nippori","mikawashima","minamisenju","kitasenju","ayase","kameari","kanamachi"] },
+  { id:"tohoku", name:"東北本線（宇都宮・高崎線）", color:"#d4379a", stations:["tokyo","ueno","oku","akabane"] },
+  { id:"keiyo", name:"京葉線", color:"#c9242b", stations:["tokyo","hatchobori","etchujima","shiomi","shinkiba","kasairinkai"] },
+  // ----- 東京メトロ -----
+  { id:"ginza", name:"銀座線", color:"#f39700", stations:["shibuya","omotesando","gaienmae","aoyamaitchome","akasakamitsuke","tameikesanno","toranomon","shimbashi","ginza","kyobashi","nihombashi","mitsukoshimae","kanda","suehirocho","uenohirokoji","ueno","inaricho","tawaramachi","asakusa"] },
+  { id:"marunouchi", name:"丸ノ内線", color:"#e60012", stations:["ogikubo","minamiasagaya","shinkoenji","higashikoenji","shinnakano","nakanosakaue","nishishinjuku","shinjuku","shinjukusanchome","shinjukugyoemmae","yotsuyasanchome","yotsuya","akasakamitsuke","kokkaigijidomae","kasumigaseki","ginza","tokyo","otemachi","awajicho","ochanomizu","hongosanchome","korakuen","myogadani","shinotsuka","ikebukuro"], branches:[["nakanosakaue","nakanoshimbashi","nakanofujimicho","honancho"]] },
+  { id:"hibiya", name:"日比谷線", color:"#9caeb7", stations:["kitasenju","minamisenju","minowa","iriya","ueno","nakaokachimachi","akihabara","kodemmacho","ningyocho","kayabacho","hatchobori","tsukiji","higashiginza","ginza","hibiya","kasumigaseki","kamiyacho","roppongi","hiroo","ebisu","nakameguro"] },
+  { id:"tozai", name:"東西線", color:"#00a7db", stations:["nakano","ochiai","takadanobaba","waseda","kagurazaka","iidabashi","kudanshita","takebashi","otemachi","nihombashi","kayabacho","monzennakacho","kiba","toyocho","minamisunamachi","nishikasai","kasai"] },
+  { id:"chiyoda", name:"千代田線", color:"#009944", stations:["yoyogiuehara","yoyogikoen","meijijingumae","omotesando","nogizaka","akasaka","kokkaigijidomae","kasumigaseki","hibiya","nijubashimae","otemachi","shinochanomizu","yushima","nezu","sendagi","nishinippori","machiya","kitasenju","ayase"], branches:[["ayase","kitaayase"]] },
+  { id:"yurakucho", name:"有楽町線", color:"#d7c447", stations:["chikatetsunarimasu","chikatetsuakatsuka","heiwadai","hikawadai","kotakemukaihara","senkawa","kanamecho","ikebukuro","higashiikebukuro","gokokuji","edogawabashi","iidabashi","ichigaya","kojimachi","nagatacho","sakuradamon","yurakucho","ginzaitchome","shintomicho","tsukishima","toyosu","tatsumi","shinkiba"] },
+  { id:"hanzomon", name:"半蔵門線", color:"#8f76d6", stations:["shibuya","omotesando","aoyamaitchome","nagatacho","hanzomon","kudanshita","jimbocho","otemachi","mitsukoshimae","suitengumae","kiyosumishirakawa","sumiyoshi","kinshicho","oshiage"] },
+  { id:"namboku", name:"南北線", color:"#00ada9", stations:["meguro","shirokanedai","shirokanetakanawa","azabujuban","roppongiitchome","tameikesanno","nagatacho","yotsuya","ichigaya","iidabashi","korakuen","todaimae","honkomagome","komagome","nishigahara","oji","ojikamiya","shimo","akabaneiwabuchi"] },
+  { id:"fukutoshin", name:"副都心線", color:"#bb641d", stations:["chikatetsunarimasu","chikatetsuakatsuka","heiwadai","hikawadai","kotakemukaihara","senkawa","kanamecho","ikebukuro","zoshigaya","nishiwaseda","higashishinjuku","shinjukusanchome","kitasando","meijijingumae","shibuya"] },
+  // ----- 都営地下鉄 -----
+  { id:"asakusa", name:"都営浅草線", color:"#e85298", stations:["nishimagome","magome","nakanobu","togoshi","gotanda","takanawadai","sengakuji","mita","daimon","shimbashi","higashiginza","takaracho","nihombashi","ningyocho","higashinihombashi","asakusabashi","kuramae","asakusa","honjoazumabashi","oshiage"] },
+  { id:"mita", name:"都営三田線", color:"#0079c2", stations:["meguro","shirokanedai","shirokanetakanawa","mita","shibakoen","onarimon","uchisaiwaicho","hibiya","otemachi","jimbocho","suidobashi","kasuga","hakusan","sengoku","sugamo","nishisugamo","shinitabashi","itabashikuyakushomae","itabashihoncho","motohasunuma","shimurasakaue","shimurasanchome","hasune","nishidai","takashimadaira","shintakashimadaira","nishitakashimadaira"] },
+  { id:"toeishinjuku", name:"都営新宿線", color:"#6cbb5a", stations:["shinjuku","shinjukusanchome","akebonobashi","ichigaya","kudanshita","jimbocho","ogawamachi","iwamotocho","bakuroyokoyama","hamacho","morishita","kikukawa","sumiyoshi","nishioshima","oshima","higashioshima","funabori","ichinoe","mizue","shinozaki"] },
+  // 大江戸線は「6」の字の形。都庁前を2回通る並びにして環状部分を閉じる
+  { id:"oedo", name:"都営大江戸線", color:"#b6007a", stations:["hikarigaoka","nerimakasugacho","toshimaen","nerima","shinegota","ochiaiminaminagasaki","nakai","higashinakano","nakanosakaue","nishishinjukugochome","tochomae","shinjukunishiguchi","higashishinjuku","wakamatsukawada","ushigomeyanagicho","ushigomekagurazaka","iidabashi","kasuga","hongosanchome","uenookachimachi","shinokachimachi","kuramae","ryogoku","morishita","kiyosumishirakawa","monzennakacho","tsukishima","kachidoki","tsukijishijo","shiodome","daimon","akabanebashi","azabujuban","roppongi","aoyamaitchome","kokuritsukyogijo","yoyogi","shinjuku","tochomae"] },
+  // ----- 私鉄（大手私鉄）。支線・短い路線は本線に統合 -----
+  { id:"keio", name:"京王線", color:"#dd0077", stations:["shinjuku","hatsudai","hatagaya","sasazuka","daitabashi","meidaimae","shimotakaido","sakurajosui","kamikitazawa","hachimanyama","rokakoen","chitosekarasuyama"] },
+  { id:"inokashira", name:"京王井の頭線", color:"#3f51b5", stations:["shibuya","shinsen","komabatodaimae","ikenoue","shimokitazawa","shindaita","higashimatsubara","meidaimae","eifukucho","nishieifuku","hamadayama","takaido","fujimigaoka","kugayama"] },
+  { id:"odakyu", name:"小田急小田原線", color:"#1e88e5", stations:["shinjuku","minamishinjuku","sangubashi","yoyogihachiman","yoyogiuehara","higashikitazawa","shimokitazawa","setagayadaita","umegaoka","gotokuji","kyodo","chitosefunabashi","soshigayaokura","seijogakuenmae","kitami"] },
+  { id:"toyoko", name:"東急東横線", color:"#e53935", stations:["shibuya","daikanyama","nakameguro","yutenji","gakugeidaigaku","toritsudaigaku","jiyugaoka","denenchofu","tamagawa"] },
+  { id:"tokyumeguro", name:"東急目黒線", color:"#00acc1", stations:["meguro","fudomae","musashikoyama","nishikoyama","senzoku","okayama","okusawa","denenchofu","tamagawa"] },
+  { id:"dentoshi", name:"東急田園都市線", color:"#2e9e6b", stations:["shibuya","ikejiriohashi","sangenjaya","komazawadaigaku","sakurashinmachi","yoga","futakotamagawa"] },
+  { id:"oimachi", name:"東急大井町線", color:"#ff9800", stations:["oimachi","shimoshimmei","togoshikoen","nakanobu","ebaramachi","hatanodai","kitasenzoku","okayama","midorigaoka","jiyugaoka","kuhombutsu","oyamadai","todoroki","kaminoge","futakotamagawa"] },
+  { id:"ikegami", name:"東急池上線", color:"#f48fb1", stations:["gotanda","osakihirokoji","togoshiginza","ebaranakanobu","hatanodai","nagahara","senzokuike","ishikawadai","yukigayaotsuka","ontakesan","kugahara","chidoricho","ikegami","hasunuma","kamata"] },
+  { id:"tokyutamagawa", name:"東急多摩川線", color:"#8e24aa", stations:["tamagawa","numabe","unoki","shimomaruko","musashinitta","yaguchinowatashi","kamata"] },
+  { id:"setagayasen", name:"東急世田谷線", color:"#fdd835", stations:["sangenjaya","nishitaishido","wakabayashi","shoinjinjamae","setagaya","kamimachi","miyanosaka","yamashita","matsubara","shimotakaido"] },
+  { id:"seibuikebukuro", name:"西武池袋線", color:"#0277bd", stations:["ikebukuro","shiinamachi","higashinagasaki","ekoda","sakuradai","nerima","nakamurabashi","fujimidai","nerimatakanodai","shakujikoen","oizumigakuen"], branches:[["nerima","toshimaen"]] },
+  { id:"seibushinjuku", name:"西武新宿線", color:"#4fc3f7", stations:["seibushinjuku","takadanobaba","shimoochiai","nakai","araiyakushimae","numabukuro","nogata","toritsukasei","saginomiya","shimoigusa","igusa","kamiigusa","kamishakujii","musashiseki"] },
+  { id:"seibuyurakucho", name:"西武有楽町線", color:"#a1887f", stations:["kotakemukaihara","shinsakuradai","nerima"] },
+  { id:"tojo", name:"東武東上線", color:"#283593", stations:["ikebukuro","kitaikebukuro","shimoitabashi","oyama","nakaitabashi","tokiwadai","kamiitabashi","tobunerima","shimoakatsuka","narimasu"] },
+  { id:"skytreeline", name:"東武スカイツリーライン", color:"#00897b", stations:["asakusa","tokyoskytree","hikifune","higashimukojima","kanegafuchi","horikiri","ushida","kitasenju","kosuge","gotanno","umejima","nishiarai","takenotsuka"], branches:[["oshiage","hikifune"],["hikifune","higashiazuma","omurai","kameidosuijin","kameido"],["nishiarai","daishimae"]] },
+  { id:"keisei", name:"京成本線", color:"#ad1457", stations:["keiseiueno","nippori","shinmikawashima","machiya","senjuohashi","keiseiseki","horikirishobuen","ohanajaya","aoto","keiseitakasago","keiseikoiwa","edogawa"], branches:[["keiseitakasago","shibamata","keiseikanamachi"]] },
+  { id:"keiseioshiage", name:"京成押上線", color:"#ff7043", stations:["oshiage","keiseihikifune","yahiro","yotsugi","keiseitateishi","aoto"] },
+  { id:"hokuso", name:"北総線", color:"#9e9d24", stations:["keiseitakasago","shinshibamata"] },
+  { id:"keikyu", name:"京急線（本線・空港線）", color:"#c62828", stations:["sengakuji","shinagawa","kitashinagawa","shimbaba","aomonoyokocho","samezu","tachiaigawa","omorikaigan","heiwajima","omorimachi","umeyashiki","keikyukamata","zoshiki","rokugodote"], branches:[["keikyukamata","koujiya","otorii","anamoriinari","tenkuubashi","hanedat3","hanedat12"]] },
+  // ----- 新交通・モノレール・路面電車 -----
+  { id:"yurikamome", name:"ゆりかもめ", color:"#1e88e5", stations:["shimbashi","shiodome","takeshiba","hinode","shibaurafuto","odaibakaihinkoen","daiba","cruiseterminal","telecomcenter","aomi","kokusaitenjijoseimon","ariake","ariaketennisnomori","shijomae","shintoyosu","toyosu"] },
+  { id:"rinkai", name:"りんかい線", color:"#26a69a", stations:["osaki","oimachi","shinagawaseaside","tennozuisle","tokyoteleport","kokusaitenjijo","shinonome","shinkiba"] },
+  { id:"monorail", name:"東京モノレール", color:"#5c6bc0", stations:["hamamatsucho","tennozuisle","oikeibajomae","ryutsucenter","showajima","seibijo","tenkuubashi","hanedat3","shinseibijo","hanedat1","hanedat2"] },
+  { id:"toneri", name:"日暮里・舎人ライナー", color:"#ec407a", stations:["nippori","nishinippori","akatsuchishogakkomae","kumanomae","adachiodai","ogiohashi","takano","kohoku","nishiaraidaishinishi","yazaike","toneikoen","toneri","minumadaishinsuikoen"] },
+  { id:"tx", name:"つくばエクスプレス", color:"#e53935", stations:["akihabara","shinokachimachi","asakusa","minamisenju","kitasenju","aoi","rokucho"] },
+  { id:"toden", name:"都電荒川線（東京さくらトラム）", color:"#8e24aa", stations:["minowabashi","arakawaicchumae","arakawakuyakushomae","arakawanichome","arakawananachome","machiyaekimae","machiyanichome","higashiogusanchome","kumanomae","miyanomae","odai","arakawayuenchimae","arakawashakomae","kajiwara","sakaecho","ojiekimae","asukayama","takinogawaicchome","nishigaharayonchome","shinkoshinzuka","koshinzuka","sugamoshinden","otsukaekimae","mukohara","higashiikebukuroyonchome","todenzoshigaya","kishibojinmae","gakushuinshita","omokagebashi","waseda"] },
+];
+const ALL_STATION_BY_ID = new Map(ALL_STATIONS.map(s => [s.id, s]));
+for (const l of ALL_LINES) {
+  for (const id of [...l.stations, ...(l.branches || []).flat()]) if (!ALL_STATION_BY_ID.has(id)) console.error("未定義の駅:", id, l.id);
+  l.seqs = [l.stations, ...(l.branches || [])]; // 本線＋支線。線は並びごとに結ぶ
+  l.uniq = [...new Set(l.seqs.flat())]; // 大江戸線のように同じ駅を2回通る路線もあるため、数えるときは重複を除く
+  l.total = l.uniq.length;
+}
+
+// ============================================================
+// モード定義（対象路線を選ぶだけ。駅は路線から自動で決まる）
+// ============================================================
+const MODES = [
+  { id:"jr", name:"JR全線", saveKey:"rosenzu-game-jr-v2", sub:"JR全線（23区内）", fit:"yamanote",
+    desc:"23区内を走るJR11路線に挑戦。乗換駅が多く、東京の骨格が浮かび上がる本格派。",
+    lines:["yamanote","keihin","chuo","sobulocal","soburapid","yokosuka","tokaido","saikyo","joban","tohoku","keiyo"] },
+  { id:"subway", name:"地下鉄", saveKey:"rosenzu-game-mode-subway", sub:"地下鉄（東京メトロ・都営）", fit:"marunouchi",
+    desc:"東京メトロ9路線と都営地下鉄4路線。地下を網の目のように走る路線を、乗換駅を足がかりに描いていこう。",
+    lines:["ginza","marunouchi","hibiya","tozai","chiyoda","yurakucho","hanzomon","namboku","fukutoshin","asakusa","mita","toeishinjuku","oedo"] },
+  { id:"private", name:"私鉄", saveKey:"rosenzu-game-mode-private", sub:"私鉄（大手私鉄）", fit:"odakyu",
+    desc:"京王・小田急・東急・西武・東武・京成・京急・北総の23区内区間。山手線の外側へ伸びる放射状の路線網を描こう。",
+    lines:["keio","inokashira","odakyu","toyoko","tokyumeguro","dentoshi","oimachi","ikegami","tokyutamagawa","setagayasen","seibuikebukuro","seibushinjuku","seibuyurakucho","tojo","skytreeline","keisei","keiseioshiage","hokuso","keikyu"] },
+  { id:"newtransit", name:"新交通・モノレール・路面電車", saveKey:"rosenzu-game-mode-newtransit", sub:"新交通・モノレール・路面電車", fit:"yurikamome",
+    desc:"ゆりかもめ・りんかい線・東京モノレール・日暮里・舎人ライナー・つくばエクスプレス・都電荒川線。湾岸から下町まで、個性派の路線を集めました。",
+    lines:["yurikamome","rinkai","monorail","toneri","tx","toden"] },
+  { id:"yamanote", name:"山手線", saveKey:"rosenzu-game-mode-yamanote", legacyKey:"rosenzu-game-v1", sub:"山手線（30駅）",
+    desc:"まずはここから。東京をぐるっと一周する環状線の30駅を完成させよう。",
+    lines:["yamanote"] },
+  { id:"chuosobu", name:"中央・総武線", saveKey:"rosenzu-game-mode-chuosobu", sub:"中央・総武線", fit:"sobulocal",
+    desc:"中央線（快速）・中央・総武線（各駅停車）・総武線（快速）の3路線。東西を貫く黄色と橙の線を描こう。",
+    lines:["chuo","sobulocal","soburapid"] },
+  // 全部入り：ゲームではなく、完成した路線図を眺めるだけ（viewOnly）。プレイ方法の選択は出さない
+  { id:"all", name:"全部入り", viewOnly:true, sub:"全部入り（路線図）", fit:"yamanote",
+    desc:"JR・地下鉄・私鉄・新交通・モノレール・路面電車、すべての路線がそろった完成版の路線図。ゲームではなく、眺めるだけ。路線のチェックで表示を切り替えられます。",
+    lines: ALL_LINES.map(l => l.id) },
+];
+for (const m of MODES) {
+  m.key = "rosenzu-v5-" + m.id; // ヒント・スコアも保存する新形式（saveKey / legacyKey は旧版の記録の引き継ぎ用）
+  m.lineObjs = m.lines.map(id => ALL_LINES.find(l => l.id === id));
+  const ids = new Set(m.lineObjs.flatMap(l => l.uniq));
+  m.stationObjs = ALL_STATIONS.filter(s => ids.has(s.id)); // 全体の並び順を保つ
+}
+
+// いま遊んでいる路線のデータ（startPlay で入れ替わる）
+let MODE = null, STATIONS = [], LINES = [], LINE_BY_ID, STATION_BY_ID, LINES_OF, NAME_INDEX, ADJ = [];
+
+// ============================================================
+// 入力の正規化（「駅」・全角半角・カタカナ/ひらがな・ケ/ヶの差を吸収）
+// ============================================================
+function norm(s) {
+  s = s.normalize("NFKC").toLowerCase().replace(/[\s・･]/g, "").replace(/駅$/, "").replace(/[ヶヵ]/g, "ケ");
+  return s.replace(/[ァ-ヶ]/g, c => String.fromCharCode(c.charCodeAt(0) - 0x60));
+}
+const ALL_NAME_INDEX = new Map();
+for (const s of ALL_STATIONS) for (const n of [s.name, s.kana, ...s.alias]) ALL_NAME_INDEX.set(norm(n), s.id);
+
+// ============================================================
+// 状態（進捗は路線ごと・プレイ方法ごとに保存）
+// ============================================================
+// found: 入力済みの駅 / hintLevel: 使ったヒントの段階（0〜3） / gaveUp: 一度でもギブアップしたか
+// giveUpActive: 今ギブアップ中（全駅名を表示中）か / score: 現在のスコア
+// playType: "normal" / "challenge"(10駅チャレンジ) / "learn"(学習モード)
+// missing: チャレンジで欠けている10駅（found には最初から他の全駅が入っている）
+let found = [], hintLevel = 0, gaveUp = false, giveUpActive = false, score = 0, missing = [];
+let playType = "normal", challenge = false, learn = false;
+let viewOnly = false; // 全部入り：ゲームではなく、完成した路線図を眺めるだけ
+const hidden = new Set();
+const HINT_RATE = [1, 0.75, 0.5, 0.25];            // ヒントの段階ごとの得点率
+const HINT_NAMES = ["", "位置", "ひらがなの頭文字", "漢字の頭文字"];
+const LEARN_HINTS = ["", "漢字1字を追加表示", "文字数とひらがな2字を表示", "漢字2字を表示"];
+const CHALLENGE_N = 10;
+const stateKey = (m, type) => m.key + ({ normal: "", challenge: "-c10", learn: "-learn" })[type];
+// 新しい10駅チャレンジ：ランダムに10駅を欠けさせ、残りは最初から入力済みにする
+function freshChallenge(m) {
+  const ids = m.stationObjs.map(s => s.id), pick = new Set();
+  while (pick.size < Math.min(CHALLENGE_N, ids.length)) pick.add(ids[Math.floor(Math.random() * ids.length)]);
+  return { found: ids.filter(id => !pick.has(id)), hint: 0, gaveUp: false, score: 0, missing: [...pick] };
+}
+// 保存データを読む。type="challenge" で保存がなければ新しい10駅チャレンジを作る（create=false なら null）
+function loadState(m, type, create = true) {
+  const ch = type === "challenge", stIds = new Set(m.stationObjs.map(s => s.id)), st = { found: [], hint: 0, gaveUp: false, score: 0, missing: [] };
+  try {
+    const v = JSON.parse(localStorage.getItem(stateKey(m, type)));
+    if (v && Array.isArray(v.found)) {
+      st.found = v.found.filter(id => stIds.has(id));
+      st.hint = Math.min(3, Math.max(0, v.hint | 0)); st.gaveUp = !!v.gaveUp; st.score = +v.score || 0;
+      if (!ch) return st;
+      st.missing = (v.missing || []).filter(id => stIds.has(id));
+      if (st.missing.length === Math.min(CHALLENGE_N, stIds.size)) return st;
+    } else if (type === "normal") {
+      // 旧版の記録（駅idの配列だけ）を引き継ぐ。ヒント機能がなかったので満点計算にする
+      for (const k of [m.saveKey, m.legacyKey]) {
+        const old = k && JSON.parse(localStorage.getItem(k));
+        if (Array.isArray(old)) { st.found = old.filter(id => stIds.has(id)); st.score = st.found.length * 100 / stIds.size; break; }
+      }
+    }
+  } catch (e) {}
+  return ch ? (create ? freshChallenge(m) : null) : st;
+}
+const save = () => { if (viewOnly) return; try { localStorage.setItem(stateKey(MODE, playType), JSON.stringify({ found, hint: hintLevel, gaveUp, score, missing })); } catch (e) {} };
+const progress = line => line.uniq.filter(id => found.includes(id)).length;
+// 1駅あたりの満点（ノーマル＝100÷全駅数、10駅チャレンジ＝10点）
+const fullPoint = () => 100 / (challenge ? missing.length : STATIONS.length);
+// 今のヒント段階で、1駅入力したときに増えるスコア（ギブアップ後・学習モードは0）
+const gainPerStation = () => (gaveUp || learn) ? 0 : fullPoint() * HINT_RATE[hintLevel];
+// 学習モードの未入力駅の表示。ヒント0:「お」 1:「御（お）」 2:「御○○（おか）」 3:「御徒○（おか）」
+function learnLabel(s, lv) {
+  const n = s.name, k = s.kana;
+  if (lv === 0) return k[0];
+  if (lv === 1) return `${n[0]}（${k[0]}）`;
+  const kanjiLen = lv === 2 ? 1 : 2;
+  return `${n.slice(0, kanjiLen)}${"＿".repeat(Math.max(0, n.length - kanjiLen))}（${k.slice(0, 2)}）`;
+}
+const isFinished = () => challenge ? missing.every(id => found.includes(id)) : found.length === STATIONS.length;
+// チェックを付けている（非表示にしていない）路線を通る駅か
+const onVisibleLine = id => LINES_OF.get(id).some(l => !hidden.has(l.id));
+
+// ============================================================
+// 地図（等距離円筒図法。範囲固定なので駅が増えても位置は動かない）
+// ============================================================
+const SCALE = 9000, PAD = 140;
+const lats = ALL_STATIONS.map(s => s.lat), lons = ALL_STATIONS.map(s => s.lon);
+const minLat = Math.min(...lats), maxLat = Math.max(...lats), minLon = Math.min(...lons), maxLon = Math.max(...lons);
+const kx = Math.cos((minLat + maxLat) / 2 * Math.PI / 180);
+const proj = (lon, lat) => [PAD + (lon - minLon) * kx * SCALE, PAD + (maxLat - lat) * SCALE];
+const POS = new Map(ALL_STATIONS.map(s => [s.id, proj(s.lon, s.lat)]));
+const pos = id => POS.get(id);
+const FULL = { x: 0, y: 0, w: (maxLon - minLon) * kx * SCALE + PAD * 2, h: (maxLat - minLat) * SCALE + PAD * 2 };
+
+const svg = document.getElementById("map"), NS = "http://www.w3.org/2000/svg";
+const el = (tag, attrs = {}, parent) => { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); if (parent) parent.appendChild(e); return e; };
+const gBg = el("g", {}, svg), gLines = el("g", {}, svg), gSt = el("g", {}, svg);
+
+// ---- 背景：東京湾・皇居・主要河川（ざっくりした輪郭） ----
+(function drawBackground() {
+  const P = pts => pts.map(([lo, la]) => proj(lo, la).join(",")).join(" ");
+  for (let x = 0; x <= FULL.w; x += 200) el("line", { x1: x, y1: 0, x2: x, y2: FULL.h, stroke: "var(--grid)", "stroke-width": 2 }, gBg);
+  for (let y = 0; y <= FULL.h; y += 200) el("line", { x1: 0, y1: y, x2: FULL.w, y2: y, stroke: "var(--grid)", "stroke-width": 2 }, gBg);
+  el("polygon", { points: P([[139.99,35.610],[139.885,35.622],[139.866,35.632],[139.850,35.634],[139.835,35.630],[139.82,35.636],[139.805,35.641],[139.793,35.646],[139.783,35.651],[139.770,35.657],[139.762,35.660],[139.761,35.652],[139.757,35.644],[139.753,35.628],[139.752,35.605],[139.750,35.590],[139.757,35.572],[139.765,35.555],[139.765,35.45],[139.99,35.45]]), fill: "var(--water)" }, gBg);
+  // お台場・有明・竹芝などの埋立地：東京湾の上に陸地として描く
+  el("polygon", { points: P([[139.768,35.620],[139.801,35.620],[139.806,35.642],[139.783,35.652],[139.768,35.632]]), fill: "var(--map-bg)" }, gBg);
+  el("polygon", { points: P([[139.757,35.661],[139.768,35.658],[139.768,35.640],[139.757,35.640]]), fill: "var(--map-bg)" }, gBg);
+  // 羽田空港（埋立地）：東京湾の上に陸地として描く
+  const [ax0, ay0] = proj(139.762, 35.563), [ax1, ay1] = proj(139.800, 35.533);
+  el("rect", { x: ax0, y: ay0, width: ax1 - ax0, height: ay1 - ay0, rx: 20, fill: "var(--map-bg)" }, gBg);
+  const rivers = {
+    "隅田川": [[139.7197,35.7835],[139.7360,35.7745],[139.7600,35.7665],[139.7860,35.7500],[139.7990,35.7430],[139.8030,35.7300],[139.8030,35.7100],[139.7960,35.6980],[139.7860,35.6800],[139.7760,35.6560],[139.7750,35.6420]],
+    "荒川": [[139.670,35.8100],[139.700,35.8050],[139.730,35.8000],[139.760,35.7970],[139.790,35.790],[139.805,35.780],[139.815,35.765],[139.822,35.745],[139.832,35.725],[139.847,35.712],[139.850,35.700],[139.858,35.680],[139.862,35.655],[139.862,35.636]],
+    "江戸川": [[139.905,35.790],[139.896,35.760],[139.893,35.735],[139.898,35.712],[139.912,35.690],[139.905,35.665],[139.885,35.640]],
+  };
+  for (const [name, pts] of Object.entries(rivers)) {
+    el("polyline", { points: P(pts), fill: "none", stroke: "var(--river)", "stroke-width": 16, "stroke-linecap": "round", "stroke-linejoin": "round" }, gBg);
+  }
+  const [px0, py0] = proj(139.7440, 35.6930), [px1, py1] = proj(139.7600, 35.6770);
+  el("rect", { x: px0, y: py0, width: px1 - px0, height: py1 - py0, rx: 24, fill: "var(--park)" }, gBg);
+  const bgText = (t, lon, lat, sz) => { const [x, y] = proj(lon, lat); const e = el("text", { x, y, class: "bgLabel", "text-anchor": "middle", style: sz ? `font-size:${sz}px` : "" }, gBg); e.textContent = t; };
+  bgText("東京湾", 139.835, 35.610); bgText("皇居", 139.7520, 35.6850, 22);
+  bgText("隅田川", 139.8160, 35.7180, 18); bgText("荒川", 139.8440, 35.7440, 18); bgText("江戸川", 139.9100, 35.7250, 18);
+})();
+
+// ============================================================
+// 表示範囲・ズーム
+// ============================================================
+let view = { ...FULL }, K = 1;
+function containerRect() { return svg.getBoundingClientRect(); }
+function applyView() {
+  svg.setAttribute("viewBox", `${view.x} ${view.y} ${view.w} ${view.h}`);
+  const r = containerRect(), sc = Math.min(r.width / view.w, r.height / view.h) || 1;
+  const nk = Math.round(Math.min(2, Math.max(0.6, 12 / (22 * sc))) * 10) / 10;
+  if (nk !== K) { K = nk; render(); }
+}
+function fitIds(ids, minW = 560) {
+  if (!ids.length) return;
+  const r = containerRect(), asp = (r.width / Math.max(1, r.height)) || 1.3;
+  const ps = ids.map(pos), xs = ps.map(p => p[0]), ys = ps.map(p => p[1]), pad = 150;
+  const x0 = Math.min(...xs) - pad, x1 = Math.max(...xs) + pad, y0 = Math.min(...ys) - pad, y1 = Math.max(...ys) + pad;
+  let w = Math.max(x1 - x0, minW), h = Math.max(y1 - y0, minW / asp);
+  if (w / h < asp) w = h * asp; else h = w / asp;
+  view = { x: (x0 + x1) / 2 - w / 2, y: (y0 + y1) / 2 - h / 2, w, h };
+  applyView();
+}
+const defaultIds = () => (LINE_BY_ID.get(MODE.fit) || LINES[0]).stations;
+// 入力済みの駅のうち、チェックを付けている路線の駅だけに表示範囲を合わせる
+const fitFound = () => { const ids = found.filter(onVisibleLine); fitIds(ids.length ? ids : defaultIds()); };
+function zoomAt(f, cx, cy) {
+  const nw = Math.min(FULL.w * 1.3, Math.max(250, view.w * f)), r = nw / view.w;
+  view = { x: cx - (cx - view.x) * r, y: cy - (cy - view.y) * r, w: nw, h: view.h * r };
+  applyView();
+}
+function clientToView(ev) {
+  const r = containerRect(), s = Math.max(view.w / r.width, view.h / r.height);
+  const ox = (r.width - view.w / s) / 2, oy = (r.height - view.h / s) / 2;
+  return [view.x + (ev.clientX - r.left - ox) * s, view.y + (ev.clientY - r.top - oy) * s, s];
+}
+svg.addEventListener("wheel", e => { e.preventDefault(); const [x, y] = clientToView(e); zoomAt(e.deltaY < 0 ? 0.85 : 1 / 0.85, x, y); }, { passive: false });
+let drag = null;
+svg.addEventListener("pointerdown", e => { const [, , s] = clientToView(e); drag = { cx: e.clientX, cy: e.clientY, vx: view.x, vy: view.y, s }; svg.setPointerCapture(e.pointerId); svg.classList.add("dragging"); });
+svg.addEventListener("pointermove", e => { if (!drag) return; view.x = drag.vx - (e.clientX - drag.cx) * drag.s; view.y = drag.vy - (e.clientY - drag.cy) * drag.s; applyView(); });
+svg.addEventListener("pointerup", () => { drag = null; svg.classList.remove("dragging"); });
+const center = () => [view.x + view.w / 2, view.y + view.h / 2];
+document.getElementById("zoomIn").onclick = () => zoomAt(0.8, ...center());
+document.getElementById("zoomOut").onclick = () => zoomAt(1.25, ...center());
+document.getElementById("fitFound").onclick = fitFound;
+document.getElementById("fitAll").onclick = () => fitIds(STATIONS.map(s => s.id));
+let rzT; window.addEventListener("resize", () => { clearTimeout(rzT); rzT = setTimeout(() => { K = 0; applyView(); }, 100); });
+
+// ============================================================
+// ラベル配置（他のラベル・駅の丸・路線に重ならない位置を貪欲に選ぶ）
+// ============================================================
+let labelCache = new Map();
+// 路線上で隣り合う駅の線分（ラベルが乗らないよう避けるため）
+function adjOf(lines) {
+  const adj = [];
+  for (const l of lines) {
+    for (const seq of l.seqs) for (let i = 0; i + 1 < seq.length; i++) adj.push([pos(seq[i]), pos(seq[i + 1])]);
+    if (l.loop) adj.push([pos(l.stations[l.stations.length - 1]), pos(l.stations[0])]);
+  }
+  return adj;
+}
+function buildAdj() { ADJ = adjOf(LINES); }
+const hit = (a, b) => a.x0 < b.x1 && b.x0 < a.x1 && a.y0 < b.y1 && b.y0 < a.y1;
+function layoutLabels(k) {
+  // 路線図ビューアは、表示中の路線の駅だけで配置し直す（チェックを外すとラベルが詰まる）
+  const vis = viewOnly ? LINES.filter(l => !hidden.has(l.id)) : LINES;
+  const list = viewOnly ? STATIONS.filter(s => onVisibleLine(s.id)) : STATIONS;
+  const adj = viewOnly ? adjOf(vis) : ADJ;
+  // 学習モードは「御徒＿（おか）」のように長いので、余白を多めにとって配置する
+  const ck = k + (learn ? "L" : "") + (viewOnly ? "V" + [...hidden].sort().join(",") : "");
+  if (labelCache.has(ck)) return labelCache.get(ck);
+  if (labelCache.size > 30) labelCache.clear();
+  const extra = learn ? 4 : 0;
+  const fs = 22 * k, d = 20 * k, R = 14 * k + 3;
+  const dots = list.map(s => { const [x, y] = pos(s.id); return { id: s.id, x0: x - R, x1: x + R, y0: y - R, y1: y + R }; });
+  // 線分の上の点をあらかじめ並べておく（ラベルが線に乗るかの判定を速くする）
+  const pts = [];
+  for (const [a, b] of adj) for (let i = 1; i < 16; i++) { const t = i / 16; pts.push(a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t); }
+  const placed = [], out = new Map();
+  const order = ["r", "l", "t", "b", "tr", "tl", "br", "bl"];
+  const cand = (s, c) => {
+    const [px, py] = pos(s.id), w = (s.name.length + extra) * fs * 1.04 + 6, h = fs * 1.1;
+    let x0, y0, anchor, tx;
+    switch (c) {
+      case "r": x0 = px + d; y0 = py - h / 2; anchor = "start"; tx = x0; break;
+      case "l": x0 = px - d - w; y0 = py - h / 2; anchor = "end"; tx = x0 + w; break;
+      case "t": x0 = px - w / 2; y0 = py - d * 0.8 - h; anchor = "middle"; tx = px; break;
+      case "b": x0 = px - w / 2; y0 = py + d * 0.8; anchor = "middle"; tx = px; break;
+      case "tr": x0 = px + d * 0.6; y0 = py - d * 0.5 - h; anchor = "start"; tx = x0; break;
+      case "tl": x0 = px - d * 0.6 - w; y0 = py - d * 0.5 - h; anchor = "end"; tx = x0 + w; break;
+      case "br": x0 = px + d * 0.6; y0 = py + d * 0.5; anchor = "start"; tx = x0; break;
+      default:   x0 = px - d * 0.6 - w; y0 = py + d * 0.5; anchor = "end"; tx = x0 + w; break;
+    }
+    return { x0, y0, x1: x0 + w, y1: y0 + h, anchor, tx, ty: y0 + h * 0.78 };
+  };
+  const cost = (s, c) => {
+    const r = cand(s, c); let n = 0;
+    for (const p of placed) if (hit(r, p)) n += 3;
+    for (const dt of dots) if (hit(r, dt)) n += 2;
+    for (let i = 0; i < pts.length; i += 2) {
+      const x = pts[i], y = pts[i + 1];
+      if (x > r.x0 && x < r.x1 && y > r.y0 && y < r.y1) n += 0.35;
+    }
+    return { r, n };
+  };
+  for (const s of list) {
+    const cs = s.pref ? [s.pref, ...order.filter(c => c !== s.pref)] : order;
+    let best = null;
+    cs.forEach((c, i) => { const { r, n } = cost(s, c); const sc = n + i * 0.02; if (!best || sc < best.sc) best = { sc, r }; });
+    placed.push(best.r); out.set(s.id, best.r);
+  }
+  labelCache.set(ck, out);
+  return out;
+}
+// ============================================================
+// 描画
+// ============================================================
+const drawn = new Set();
+function segmentsOf(line) { // 入力済みの駅を、本線・支線それぞれの並び順に結ぶ
+  const segs = [];
+  for (const seq of line.seqs) {
+    const got = seq.filter(id => found.includes(id));
+    for (let i = 0; i + 1 < got.length; i++) if (got[i] !== got[i + 1]) segs.push([got[i], got[i + 1]]);
+    if (line.loop && seq === line.stations && got.length >= 3) segs.push([got[got.length - 1], got[0]]);
+  }
+  return segs;
+}
+const LINE_W = 8, LANE = 9;
+
+function render() {
+  gLines.replaceChildren(); gSt.replaceChildren();
+  const vis = LINES.filter(l => !hidden.has(l.id));
+  // 同じ2駅を結ぶ路線が複数あるときは、横にずらして並べる
+  const groups = new Map();
+  for (const line of vis) for (const [a, b] of segmentsOf(line)) {
+    const k = a < b ? a + "|" + b : b + "|" + a;
+    if (!groups.has(k)) groups.set(k, []);
+    groups.get(k).push(line);
+  }
+  for (const [k, arr] of groups) {
+    const [ca, cb] = k.split("|"), [x1, y1] = pos(ca), [x2, y2] = pos(cb);
+    const dx = x2 - x1, dy = y2 - y1, len = Math.hypot(dx, dy) || 1, nx = -dy / len, ny = dx / len;
+    arr.forEach((line, i) => {
+      const o = (i - (arr.length - 1) / 2) * LANE * K, key = `${line.id}:${k}`;
+      el("line", { x1: x1 + nx * o, y1: y1 + ny * o, x2: x2 + nx * o, y2: y2 + ny * o, stroke: line.color,
+        "stroke-width": LINE_W * K, class: "seg" + (drawn.has(key) ? "" : " new") }, gLines);
+      drawn.add(key);
+    });
+  }
+  // 表示する駅：入力済み ＋（ギブアップ中は全駅／ヒントを使った後は未入力の駅の位置）。いずれもチェック中の路線の駅だけ
+  const labels = layoutLabels(K), showUnfound = giveUpActive || hintLevel > 0 || learn; // 学習モードは最初から全駅の位置を表示
+  for (const s of STATIONS) {
+    const id = s.id, done = found.includes(id);
+    if (!done && !showUnfound) continue;
+    const lns = LINES_OF.get(id).filter(l => !hidden.has(l.id));
+    if (!lns.length) continue;
+    // 未入力駅のラベル：ギブアップ中は駅名、ヒント1=なし、2=ひらがなの頭文字、3=漢字の頭文字
+    let text = s.name;
+    if (!done && !giveUpActive) text = learn ? learnLabel(s, hintLevel) : hintLevel === 2 ? s.kana[0] : hintLevel === 3 ? s.name[0] : "";
+    const [x, y] = pos(id), key = "st:" + id, multi = lns.length > 1;
+    const cls = done ? "" : giveUpActive ? " missed" : " hint";
+    const g = el("g", { class: "stg" + cls + (drawn.has(key) || !done ? "" : " new") }, gSt);
+    if (done) drawn.add(key);
+    el("circle", { cx: x, cy: y, r: (multi ? 14 : 10) * K, class: "stDot", fill: "#fff",
+      stroke: multi ? "#333" : lns[0].color, "stroke-width": (multi ? 3.5 : 4.5) * K }, g);
+    if (text) {
+      const r = labels.get(id);
+      const t = el("text", { class: "stLabel", x: r.tx, y: r.ty, "text-anchor": r.anchor, style: `font-size:${22 * K}px;stroke-width:${5 * K}px` }, g);
+      t.textContent = text;
+    }
+  }
+  renderPanel();
+}
+
+function renderPanel() {
+  const solved = challenge ? missing.filter(id => found.includes(id)).length : found.length;
+  document.querySelector("#total span:first-child").textContent = viewOnly ? "表示中の駅" : challenge ? "欠けていた駅" : "入力した駅";
+  document.querySelector("#total span:last-child").textContent = viewOnly
+    ? `${STATIONS.filter(s => onVisibleLine(s.id)).length} / ${STATIONS.length} 駅`
+    : `${solved} / ${challenge ? missing.length : STATIONS.length} 駅`;
+  const cards = document.getElementById("cards"); cards.replaceChildren();
+  for (const line of LINES) {
+    const n = progress(line), tot = line.total, c = document.createElement("div");
+    c.className = "lineCard" + (n === tot ? " done" : "");
+    c.innerHTML = viewOnly // ビューアは進捗の概念がないので、駅数だけを出す
+      ? `<label><input type="checkbox" ${hidden.has(line.id) ? "" : "checked"}><span class="badge" style="background:${line.color}"></span>${line.name}<span class="cnt">${tot}駅</span></label>`
+      : `<label><input type="checkbox" ${hidden.has(line.id) ? "" : "checked"}><span class="badge" style="background:${line.color}"></span>${line.name}<span class="cnt">${n === tot ? "✓ " : ""}${n} / ${tot}</span></label>
+      <div class="bar"><i style="width:${n / tot * 100}%;background:${line.color}"></i></div>`;
+    c.querySelector("input").addEventListener("change", () => toggleLine(line.id));
+    cards.appendChild(c);
+  }
+  const h = document.getElementById("history"); h.replaceChildren();
+  const entered = challenge ? found.filter(id => missing.includes(id)) : found; // チャレンジでは最初から描かれている駅は履歴に出さない
+  for (const id of [...entered].reverse()) { const s = document.createElement("span"); s.className = "chip"; s.textContent = STATION_BY_ID.get(id).name; h.appendChild(s); }
+  renderLegend(); renderHud();
+}
+// スコア・ヒント・ギブアップの表示
+const fmt = n => (Math.round(n * 10) / 10).toFixed(1).replace(/\.0$/, "");
+function renderHud() {
+  document.getElementById("scoreBox").style.display = learn ? "none" : ""; // 学習モードはスコアなし
+  document.getElementById("scoreVal").textContent = fmt(score);
+  const notes = [];
+  if (gaveUp) notes.push("ギブアップ済み：スコアは増えません");
+  else if (hintLevel > 0) notes.push(`ヒント使用中：1駅あたり${HINT_RATE[hintLevel] * 100}%の得点`);
+  document.getElementById("scoreNote").textContent = notes.join("");
+  const hb = document.getElementById("hintBtn"), gb = document.getElementById("giveUpBtn");
+  hb.textContent = `💡 ヒント ${hintLevel}/3`;
+  hb.disabled = hintLevel >= 3;
+  hb.title = hintLevel >= 3 ? "ヒントはすべて使用済みです"
+    : learn ? `次のヒント：${LEARN_HINTS[hintLevel + 1]}`
+    : `次のヒント：${HINT_NAMES[hintLevel + 1]}（以降の得点が${HINT_RATE[hintLevel + 1] * 100}%になります）`;
+  gb.textContent = giveUpActive ? "▶ 再開" : "🏳 ギブアップ";
+  gb.classList.toggle("on", giveUpActive);
+}
+function toggleLine(id) { hidden.has(id) ? hidden.delete(id) : hidden.add(id); render(); }
+// すべての路線のチェックを入れる／外す
+function setAllLines(on) { if (on) hidden.clear(); else LINES.forEach(l => hidden.add(l.id)); render(); }
+for (const [id, on] of [["selAll", true], ["selNone", false], ["lgAll", true], ["lgNone", false]]) document.getElementById(id).onclick = () => setAllLines(on);
+function renderLegend() {
+  const box = document.querySelector("#legend .items"); box.replaceChildren();
+  for (const line of LINES) {
+    const d = document.createElement("div");
+    d.className = "item" + (hidden.has(line.id) ? " off" : "") + (progress(line) ? "" : " empty");
+    d.innerHTML = `<span class="sw" style="background:${line.color}"></span><span class="nm">${line.name}</span>`;
+    d.onclick = () => toggleLine(line.id);
+    box.appendChild(d);
+  }
+}
+document.querySelector("#legend .lh").onclick = () => {
+  const lg = document.getElementById("legend"); lg.classList.toggle("collapsed");
+  lg.querySelector(".arrow").textContent = lg.classList.contains("collapsed") ? "▸" : "▾";
+};
+
+// ============================================================
+// UI
+// ============================================================
+const input = document.getElementById("input"), msg = document.getElementById("message"), toast = document.getElementById("toast");
+const say = (text, cls) => { msg.textContent = text; msg.className = cls || ""; };
+let toastTimer;
+function showToast(text) { toast.textContent = text; toast.classList.add("show"); clearTimeout(toastTimer); toastTimer = setTimeout(() => toast.classList.remove("show"), 3000); }
+
+document.getElementById("form").addEventListener("submit", e => {
+  e.preventDefault();
+  const raw = input.value.trim(); if (!raw) return;
+  input.value = "";
+  const id = ALL_NAME_INDEX.get(norm(raw));
+  if (!id) return say(`「${raw}」は対象の路線に見つかりませんでした`, "ng");
+  if (!STATION_BY_ID.has(id)) return say(`${ALL_STATION_BY_ID.get(id).name}駅は${MODE.name}の対象外です`, "warn");
+  const s = STATION_BY_ID.get(id);
+  if (found.includes(id)) return say(challenge && !missing.includes(id) ? `${s.name}駅は最初から地図に描かれています。欠けている駅を探そう` : `${s.name}駅はすでに入力済みです`, "warn");
+  const gain = gainPerStation(); // ヒント段階・ギブアップの状態で、この駅の得点が決まる
+  score += gain; found.push(id); save();
+  const lns = LINES_OF.get(id), done = lns.filter(l => progress(l) === l.total).map(l => l.name);
+  say(`${s.name}駅を追加！${gain ? `（+${fmt(gain)}点）` : ""}　` + lns.map(l => `${l.name} ${progress(l)}/${l.total}`).join("　"), "ok");
+  const [x, y] = pos(id), m = 50;
+  if (x < view.x + m || x > view.x + view.w - m || y < view.y + m || y > view.y + view.h - m) fitFound();
+  render();
+  if (isFinished()) showToast(learn ? "🏆 全駅制覇！ 学習モードクリア" : challenge ? `🏆 10駅クリア！ スコア ${fmt(score)}点\nリセットで新しい10駅に挑戦できます` : `🏆 全駅制覇！ スコア ${fmt(score)}点`);
+  else if (done.length) showToast(`🎉 ${done.join("・")} 完成！`);
+});
+
+document.getElementById("hintBtn").addEventListener("click", () => {
+  if (hintLevel >= 3) return;
+  if (learn) { // 学習モード：ヒントはいくつ使っても減点なし。確認なしで段階を進める
+    hintLevel++; save(); render();
+    say(`ヒント${hintLevel}：${LEARN_HINTS[hintLevel]}しました。`, "warn");
+    return input.focus();
+  }
+  const next = hintLevel + 1, what = ["", "未入力の駅の位置を地図に表示", "さらに、ひらがなの頭文字を表示", "さらに、頭文字を漢字（正式表記）に変更"][next];
+  if (!gaveUp && !confirm(`ヒント${next}：${what}します。\nこれ以降に入力する駅の得点が通常の${HINT_RATE[next] * 100}%になります。使いますか？`)) return;
+  hintLevel = next; save(); render();
+  say(`ヒント${next}を使用：${what}しました。`, "warn");
+  input.focus();
+});
+document.getElementById("giveUpBtn").addEventListener("click", () => {
+  if (giveUpActive) { // 再開：駅名を隠してヒント段階の表示に戻す
+    giveUpActive = false; render(); say(learn ? "再開しました。" : "再開しました。スコアは増えません。", "warn"); return input.focus();
+  }
+  if (learn) { // 学習モードはスコアがないので、確認なしで全駅名を見られる
+    giveUpActive = true; fitIds(STATIONS.filter(s => onVisibleLine(s.id)).map(s => s.id)); render();
+    say("全駅名を表示中です。もう一度押すと再開します。", "warn");
+    return input.focus();
+  }
+  if (!gaveUp && !confirm("ギブアップすると全駅名が地図に表示されます。\nこの先はスコアが増えなくなります（再開しても戻りません）。よろしいですか？")) return;
+  gaveUp = true; giveUpActive = true; save();
+  fitIds(STATIONS.filter(s => onVisibleLine(s.id)).map(s => s.id)); // 全駅が見える範囲へ
+  render();
+  say("ギブアップ中：全駅名を表示しています。駅名を入力して路線図を作れます（スコアは増えません）。", "warn");
+  input.focus();
+});
+document.getElementById("resetBtn").addEventListener("click", () => {
+  if (!confirm(challenge ? "スコア・ヒント・ギブアップの記録を消して、新しい10駅でやり直しますか？" : learn ? "入力した駅とヒントの記録をすべて消してやり直しますか？" : "入力した駅・スコア・ヒント・ギブアップの記録をすべて消してやり直しますか？")) return;
+  const st = challenge ? freshChallenge(MODE) : { found: [], hint: 0, gaveUp: false, score: 0, missing: [] };
+  applyState(st);
+  save(); seedDrawn(); fitFound(); render();
+  say(challenge ? `新しい10駅に挑戦！ 欠けている駅を入力しよう` : "リセットしました"); input.focus();
+});
+
+// ============================================================
+// プレイの開始とメインメニュー
+// ============================================================
+const menuEl = document.getElementById("menu");
+const applyState = st => { found = st.found; hintLevel = st.hint; gaveUp = st.gaveUp; score = st.score; missing = st.missing || []; giveUpActive = false; };
+// すでに描かれている駅・線は、アニメなしで表示する
+function seedDrawn() {
+  drawn.clear(); K = 0;
+  found.forEach(id => drawn.add("st:" + id));
+  LINES.forEach(l => segmentsOf(l).forEach(([a, b]) => drawn.add(`${l.id}:${a < b ? a + "|" + b : b + "|" + a}`)));
+}
+// 路線 m を、type（"normal" / "challenge" / "learn"）で始める
+function startPlay(m, type) {
+  MODE = m; STATIONS = m.stationObjs; LINES = m.lineObjs;
+  playType = type; challenge = type === "challenge"; learn = type === "learn"; viewOnly = false;
+  document.body.classList.remove("viewonly");
+  LINE_BY_ID = new Map(LINES.map(l => [l.id, l]));
+  STATION_BY_ID = new Map(STATIONS.map(s => [s.id, s]));
+  LINES_OF = new Map(STATIONS.map(s => [s.id, LINES.filter(l => l.uniq.includes(s.id))]));
+  NAME_INDEX = new Map();
+  buildAdj(); labelCache = new Map();
+  applyState(loadState(m, type)); hidden.clear();
+  if (challenge) save(); // 新しく作った10駅を保存して、再読み込みしても同じ問題を続けられるようにする
+  document.getElementById("modeName").textContent = m.sub + ({ normal: "", challenge: "　10駅チャレンジ", learn: "　学習モード" })[type];
+  document.getElementById("legend").style.display = LINES.length > 1 ? "" : "none";
+  seedDrawn();
+  menuEl.style.display = "none";
+  fitFound(); render();
+  const left = missing.filter(id => !found.includes(id)).length;
+  say(challenge
+    ? (left < missing.length ? `続きから再開（残り${left}駅）` : `欠けている${missing.length}駅を入力しよう！ ヒントなしで全部当てると100点`)
+    : learn
+    ? (found.length ? `続きから再開（${found.length}駅）` : "地図の読み仮名を手がかりに、駅名を入力しよう！ ヒントは何度使っても減点なし")
+    : (found.length ? `続きから再開（${found.length}駅）` : `${m.sub}の駅名を入力してみよう！ ヒントなしで全駅クリアすると100点`));
+  input.focus();
+}
+
+// 全部入り：全駅を入力済みにした状態で、路線図を表示するだけ（入力・ヒント・スコアなし）
+function startView(m) {
+  MODE = m; STATIONS = m.stationObjs; LINES = m.lineObjs;
+  playType = "view"; challenge = false; learn = false; viewOnly = true;
+  document.body.classList.add("viewonly");
+  LINE_BY_ID = new Map(LINES.map(l => [l.id, l]));
+  STATION_BY_ID = new Map(STATIONS.map(s => [s.id, s]));
+  LINES_OF = new Map(STATIONS.map(s => [s.id, LINES.filter(l => l.uniq.includes(s.id))]));
+  buildAdj(); labelCache = new Map();
+  applyState({ found: STATIONS.map(s => s.id), hint: 0, gaveUp: false, score: 0, missing: [] }); hidden.clear();
+  document.getElementById("modeName").textContent = m.sub;
+  document.getElementById("legend").style.display = "";
+  seedDrawn();
+  menuEl.style.display = "none";
+  fitFound(); render();
+  say(`全${LINES.length}路線・${STATIONS.length}駅。路線のチェックで表示を切り替えられます（ホイールで拡大、ドラッグで移動）`);
+}
+
+// --- メニュー：①路線を選ぶ → ②プレイ方法（ノーマル／10駅チャレンジ／学習モード）を選ぶ → プレイ画面 ---
+const menuList = document.getElementById("modeList"), menuLead = document.getElementById("menuLead"), menuBack = document.getElementById("menuBackBtn");
+function showMenu() { // ①路線の選択
+  menuLead.textContent = "駅名を入力して、東京23区の路線図を完成させよう。路線を選んでください。";
+  menuBack.hidden = true; menuList.replaceChildren();
+  for (const m of MODES) {
+    if (m.viewOnly) { // 全部入り：スコアも進捗もなく、そのまま路線図を開く
+      const c = document.createElement("button"), tot = m.stationObjs.length;
+      c.className = "modeCard";
+      c.innerHTML = `<div class="tag">路線図を眺める</div><h2>${m.name}</h2>
+        <div class="stripes">${m.lineObjs.map(x => `<i style="background:${x.color}" title="${x.name}"></i>`).join("")}</div>
+        <p>${m.desc}</p>
+        <div class="prog"><span>${m.lineObjs.length}路線・${tot}駅</span></div>`;
+      c.onclick = () => startView(m);
+      menuList.appendChild(c);
+      continue;
+    }
+    const tot = m.stationObjs.length, a = loadState(m, "normal"), b = loadState(m, "challenge", false), l = loadState(m, "learn"), c = document.createElement("button");
+    c.className = "modeCard" + (a.found.length === tot ? " complete" : "");
+    c.innerHTML = `<h2>${m.name}</h2>
+      <div class="stripes">${m.lineObjs.map(x => `<i style="background:${x.color}" title="${x.name}"></i>`).join("")}</div>
+      <p>${m.desc}</p>
+      <div class="prog"><span>${m.lineObjs.length}路線・${tot}駅</span></div>
+      <div class="sc"><span>ノーマル <b>${fmt(a.score)}点</b></span><span>10駅チャレンジ <b>${b ? fmt(b.score) + "点" : "未挑戦"}</b></span><span>学習 <b>${l.found.length}/${tot}駅</b></span></div>`;
+    c.onclick = () => showTypes(m);
+    menuList.appendChild(c);
+  }
+  menuEl.style.display = "flex"; menuEl.scrollTop = 0;
+}
+function showTypes(m) { // ②プレイ方法の選択
+  menuLead.textContent = `${m.name} ― プレイ方法を選んでください。`;
+  menuBack.hidden = false; menuList.replaceChildren();
+  const tot = m.stationObjs.length, a = loadState(m, "normal"), b = loadState(m, "challenge", false), l = loadState(m, "learn");
+  const left = b ? b.missing.filter(id => !b.found.includes(id)).length : CHALLENGE_N;
+  const types = [
+    { type: "normal", title: "ノーマル", tag: "白紙から全駅",
+      desc: `路線図は白紙から。${tot}駅すべてを自分で入力して完成させます。ヒントを使わず完成すれば100点。`,
+      prog: `${a.found.length} / ${tot}駅`, score: fmt(a.score) + "点", done: a.found.length === tot, bar: a.found.length / tot },
+    { type: "challenge", title: "10駅チャレンジ", tag: "欠けた10駅だけ",
+      desc: `路線図はほぼ完成済み。欠けている${Math.min(CHALLENGE_N, tot)}駅だけを入力します。スコアは0から始まり、ヒントを使わず完成すれば100点。始めるたびに欠ける駅が変わります。`,
+      prog: b ? (left ? `残り${left}駅` : "クリア済み") : "未挑戦", score: fmt(b ? b.score : 0) + "点", done: b && !left, bar: b ? 1 - left / CHALLENGE_N : 0 },
+    { type: "learn", title: "学習モード", tag: "ヒントつきで覚える",
+      desc: "スコアなしで駅名を覚えるモード。最初から全駅の位置とひらがな1文字が地図に出ています。ヒントを使うと漢字や文字数も増え、減点はありません。",
+      prog: `${l.found.length} / ${tot}駅`, score: "スコアなし", done: l.found.length === tot, bar: l.found.length / tot },
+  ];
+  for (const t of types) {
+    const c = document.createElement("button");
+    c.className = "modeCard" + (t.done ? " complete" : "");
+    c.innerHTML = `<div class="tag">${t.tag}</div><h2>${t.title}</h2><p>${t.desc}</p>
+      <div class="prog"><span>${t.done ? "🏆 " : ""}${t.prog}</span><span><b>${t.score}</b></span></div>
+      <div class="bar"><i style="width:${t.bar * 100}%;background:var(--accent)"></i></div>`;
+    c.onclick = () => startPlay(m, t.type);
+    menuList.appendChild(c);
+  }
+  menuEl.scrollTop = 0;
+}menuBack.onclick = showMenu;
+document.getElementById("backBtn").onclick = showMenu;
+showMenu();
+</script>
+</body>
+</html>
